@@ -51,6 +51,11 @@ export interface PlanRun {
     suggestedReviewer?: string;
     /** Link to evidence in analysis artifacts */
     evidenceReferences: string[];
+    /** Invocation context such as task or discussion identity */
+    invocation?: {
+      task?: string;
+      discussionId?: string;
+    };
   };
 }
 

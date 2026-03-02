@@ -9,9 +9,9 @@ import { PlanRun, ActionItem } from '../../contracts/planning.js';
  */
 export class PlanningGenerator {
   /**
-   * Generates a plan run based on the provided analysis run.
+   * Generates a plan run based on the provided analysis run and optional invocation context.
    */
-  generate(analysis: AnalysisRun): PlanRun {
+  generate(analysis: AnalysisRun, invocation?: { task?: string; discussionId?: string }): PlanRun {
     const actions: ActionItem[] = [];
 
     // Map each recommendation to one or more action items
@@ -28,8 +28,10 @@ export class PlanningGenerator {
       id,
       timestamp,
       analysisRunId: analysis.id,
-      title: `Plan based on Analysis ${analysis.id}`,
-      objective: 'Address recommendations identified during repository analysis.',
+      title: invocation?.task ? `Plan: ${invocation.task}` : `Plan based on Analysis ${analysis.id}`,
+      objective: invocation?.task 
+        ? `Develop a plan for the task: ${invocation.task}` 
+        : 'Address recommendations identified during repository analysis.',
       actions,
       assumptions: [
         'The repository state has not significantly changed since the analysis run.',
@@ -42,6 +44,7 @@ export class PlanningGenerator {
           `Analysis Run ID: ${analysis.id}`,
           `Commit Hash: ${analysis.observedFacts.repository.commitHash}`,
         ],
+        invocation,
       },
     };
   }

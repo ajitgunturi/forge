@@ -50,6 +50,19 @@ export const SidecarMetadataSchema = z.object({
   }).optional(),
 
   /**
+   * Summary of generated action plans.
+   */
+  planning: z.object({
+    lastPlanId: z.string().optional(),
+    history: z.array(z.object({
+      id: z.string(),
+      timestamp: z.string().datetime(),
+      analysisRunId: z.string(),
+      artifactPath: z.string(),
+    })).default([]),
+  }).optional(),
+
+  /**
    * Arbitrary history of Forge runs against this repository.
    */
   history: z.array(z.object({

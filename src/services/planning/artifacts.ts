@@ -15,6 +15,8 @@ export interface PlanningPaths {
   plans: string;
   /** Path to the latest plan run JSON artifact. */
   latest: string;
+  /** Path to the latest plan run Markdown artifact. */
+  latestMarkdown: string;
 }
 
 /**
@@ -26,7 +28,61 @@ export function derivePlanningPaths(context: SidecarContext): PlanningPaths {
     base,
     plans: path.join(base, PLANS_SUBDIR),
     latest: path.join(base, LATEST_PLAN_POINTER),
+    latestMarkdown: path.join(base, 'latest.md'),
   };
+}
+
+/**
+ * Converts a PlanRun into a human-reviewable Markdown format.
+ */
+export function planToMarkdown(run: PlanRun): string {
+  const lines: string[] = [
+    `# Action Plan: ${run.title}`,
+    '',
+    `**ID:** \`${run.id}\`  `,
+    `**Timestamp:** ${run.timestamp}  `,
+    `**Analysis ID:** \`${run.analysisRunId}\`  `,
+    '',
+    '## Objective',
+    run.objective,
+    '',
+    '## Actions',
+    '',
+  ];
+
+  for (const action of run.actions) {
+    lines.push(`### ${action.title}`);
+    lines.push(`**Type:** ${action.type}  `);
+    lines.push(`**Rationale:** ${action.rationale}`);
+    lines.push('');
+    lines.push(action.description);
+    lines.push('');
+    if (action.files && action.files.length > 0) {
+      lines.push('**Files:**');
+      action.files.forEach(f => lines.push(`- \`${f}\``));
+      lines.push('');
+    }
+    if (action.needsVerification) {
+      lines.push('> [!IMPORTANT]');
+      lines.push('> This action requires human verification before execution.');
+      lines.push('');
+    }
+  }
+
+  lines.push('---');
+  lines.push('## Metadata');
+  lines.push(`- **Advisory:** ${run.metadata.isAdvisory ? 'Yes' : 'No'}`);
+  if (run.metadata.suggestedReviewer) {
+    lines.push(`- **Suggested Reviewer:** ${run.metadata.suggestedReviewer}`);
+  }
+  if (run.metadata.invocation?.task) {
+    lines.push(`- **Task:** ${run.metadata.invocation.task}`);
+  }
+  if (run.metadata.invocation?.discussionId) {
+    lines.push(`- **Discussion ID:** ${run.metadata.invocation.discussionId}`);
+  }
+
+  return lines.join('\n');
 }
 
 /**
@@ -69,14 +125,20 @@ export async function persistPlanRun(
   await mkdir(paths.plans, { recursive: true });
 
   const filename = `${run.id}.json`;
+  const mdFilename = `${run.id}.md`;
   const artifactPath = path.join(paths.plans, filename);
+  const mdPath = path.join(paths.plans, mdFilename);
+  
   const payload = JSON.stringify(run, null, 2);
+  const markdown = planToMarkdown(run);
 
   // Write full historical plan
   await writeFile(artifactPath, payload, 'utf-8');
+  await writeFile(mdPath, markdown, 'utf-8');
 
-  // Update latest pointer with a full copy
+  // Update latest pointers
   await writeFile(paths.latest, payload, 'utf-8');
+  await writeFile(paths.latestMarkdown, markdown, 'utf-8');
 
   // Return summary for metadata update
   const summary: PlanRunSummary = {
