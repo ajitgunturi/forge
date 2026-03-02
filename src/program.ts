@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { UserFacingError } from "./lib/errors.js";
 import { bootstrapCommand } from "./commands/bootstrap.js";
 import { analyzeCommand } from "./commands/analyze.js";
+import { planCommand } from "./commands/plan.js";
 import { installCopilotCommand } from "./commands/install-copilot.js";
 
 type PackageManifest = {
@@ -49,6 +50,15 @@ export async function createProgram(): Promise<Command> {
     .description("Analyze the repository to identify facts and recommendations.")
     .action(async () => {
       await analyzeCommand();
+    });
+
+  program
+    .command("plan")
+    .description("Generate an end-to-end action plan for a task.")
+    .option("--task <description>", "The task to plan for.")
+    .option("--context <identifier>", "A context identifier, such as a discussion ID.")
+    .action(async (options) => {
+      await planCommand(options);
     });
 
   program
