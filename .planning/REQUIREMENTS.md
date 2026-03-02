@@ -70,26 +70,26 @@
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | INVK-01 | Phase 1 | Pending |
-| INVK-02 | Phase 1 | Pending |
-| INVK-03 | Phase 1 | Pending |
-| INVK-04 | Phase 2 | Pending |
+| INVK-02 | Phase 4 | Pending |
+| INVK-03 | Phase 3 | Pending |
+| INVK-04 | Phase 1 | Pending |
 | SIDE-01 | Phase 1 | Pending |
 | SIDE-02 | Phase 1 | Pending |
-| SIDE-03 | Phase 2 | Pending |
-| SIDE-04 | Phase 2 | Pending |
+| SIDE-03 | Phase 1 | Pending |
+| SIDE-04 | Phase 1 | Pending |
 | ANLY-01 | Phase 2 | Pending |
 | ANLY-02 | Phase 2 | Pending |
-| ANLY-03 | Phase 3 | Pending |
-| ANLY-04 | Phase 3 | Pending |
+| ANLY-03 | Phase 2 | Pending |
+| ANLY-04 | Phase 2 | Pending |
 | PLAN-01 | Phase 3 | Pending |
 | PLAN-02 | Phase 3 | Pending |
-| PLAN-03 | Phase 4 | Pending |
-| PLAN-04 | Phase 4 | Pending |
+| PLAN-03 | Phase 3 | Pending |
+| PLAN-04 | Phase 3 | Pending |
 | ASST-01 | Phase 4 | Pending |
 | ASST-02 | Phase 4 | Pending |
 | ASST-03 | Phase 4 | Pending |
 | ASST-04 | Phase 4 | Pending |
-| ASST-05 | Phase 1 | Pending |
+| ASST-05 | Phase 4 | Pending |
 | DELV-01 | Phase 1 | Pending |
 | DELV-02 | Phase 5 | Pending |
 | DELV-03 | Phase 5 | Pending |
@@ -102,4 +102,4 @@
 
 ---
 *Requirements defined: 2026-03-02*
-*Last updated: 2026-03-02 after scope correction*
+*Last updated: 2026-03-02 after roadmap traceability alignment*
