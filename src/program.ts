@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { UserFacingError } from "./lib/errors.js";
 import { bootstrapCommand } from "./commands/bootstrap.js";
+import { analyzeCommand } from "./commands/analyze.js";
 
 type PackageManifest = {
   name?: string;
@@ -33,6 +34,13 @@ export async function createProgram(): Promise<Command> {
     .description("Initialize or update the Forge sidecar in the current repository.")
     .action(async () => {
       await bootstrapCommand();
+    });
+
+  program
+    .command("analyze")
+    .description("Analyze the repository to identify facts and recommendations.")
+    .action(async () => {
+      await analyzeCommand();
     });
 
   program.action(async () => {
