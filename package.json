@@ -1,0 +1,26 @@
+{
+  "name": "forge-ai-assist",
+  "version": "0.1.0",
+  "description": "Forge AI Assist CLI",
+  "type": "module",
+  "bin": {
+    "forge-ai-assist": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "build": "tsc --project tsconfig.json",
+    "smoke": "node dist/cli.js --help"
+  },
+  "dependencies": {
+    "commander": "^14.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "typescript": "^5.9.2"
+  }
+}
