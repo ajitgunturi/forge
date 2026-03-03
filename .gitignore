@@ -1,3 +1,7 @@
 dist
+dist/
 *.tgz
 .forge
+.forge/
+node_modules/
+.DS_Store
