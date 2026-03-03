@@ -16,6 +16,7 @@
     "build": "tsc --project tsconfig.json",
     "smoke": "node dist/cli.js --help",
     "test": "vitest run",
+    "test:smoke": "vitest run tests/smoke",
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
