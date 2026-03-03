@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: Phase 8
+current_phase: Phase 9
 status: complete
-last_updated: "2026-03-03T09:51:00.000Z"
+last_updated: "2026-03-03T10:30:00.000Z"
 progress:
-  total_phases: 8
-  completed_phases: 8
-  total_plans: 23
-  completed_plans: 23
+  total_phases: 9
+  completed_phases: 9
+  total_plans: 26
+  completed_plans: 26
   percent: 100
 ---
 
@@ -17,7 +17,7 @@ progress:
 
 **Last updated:** 2026-03-03
 **Current milestone:** v1
-**Current phase:** Phase 8
+**Current phase:** Phase 9
 **Status:** Complete
 
 ## Active Roadmap
@@ -30,6 +30,7 @@ progress:
 - [x] Phase 6: Milestone Audit Closure (Complete)
 - [x] Phase 7: Installer Simplification And GitHub Discussions Ingest
 - [x] Phase 8: Cross-Assistant Forge Discussion Analyzer Summonable
+- [x] Phase 9: Release Management And Public Install
 
 ## Audit Closure
 
@@ -45,6 +46,9 @@ Foundational milestone audit gaps have been addressed. Phase 1 requirements are 
 - Scope refinement: the GitHub Discussions workflow must require `GH_TOKEN` or `GITHUB_TOKEN` and support date/category filters such as `today`, `yesterday`, `last week`, `after`, and `before`.
 - Phase 8 added: package the attached `gh-discussion-analyzer` behavior as a Forge-managed cross-assistant summonable named `forge-discussion-analyzer`.
 - Scope refinement: Forge should own downloads, scripts, caching, and compact analysis context so assistant-installed assets stay lightweight while preserving high-quality discussion analysis.
+- Phase 9 added: establish local-machine release management and a public one-command install path for Forge.
+- Scope refinement: release builds and publishes should run from the maintainer's local machine for now, while installation must stay frictionless for any Node-capable system.
+- Phase 9 completed: Forge now has publish-facing package metadata, packed-artifact install verification, a local `release:local` workflow, and maintainer/user release documentation.
 
 ## Quick Tasks Completed
 
@@ -61,4 +65,4 @@ Foundational milestone audit gaps have been addressed. Phase 1 requirements are 
 
 ## Next Action
 
-- Phase 8 complete. Next natural step is to use Forge-managed discussion analysis in a live assistant runtime and tighten any platform-specific invocation gaps you observe.
+- Phase 9 is complete. Next natural step is to authenticate npm on the maintainer machine and run the first real `npm run release:local -- --publish`.

@@ -171,3 +171,25 @@ Plans:
 - [x] 08-01 - Add named summonable asset support and install forge-discussion-analyzer across assistants
 - [x] 08-02 - Build the Forge-managed discussion analysis runtime and compact context pipeline
 - [x] 08-03 - Wire assistant-native invocation flows and verify cross-assistant summonability
+
+## Phase 9: Release Management And Public Install (Complete)
+
+Add a maintainer-grade local release workflow that turns Forge into a publishable product with versioned releases and one-command installation on any machine.
+
+**Goal:** Establish release management for Forge from the maintainer's local machine while publishing the installable CLI through a public Node distribution path that keeps `npx forge-ai-assist@latest` as the universal install command.
+**Requirements:** EXTD-03
+**Depends on:** Phase 8
+**Plans:** 3 plans
+
+**Success criteria:**
+
+- Forge has a documented, repeatable local release workflow that validates builds/tests and publishes versioned artifacts without manual file shuffling
+- Maintainers can cut and verify a release entirely from a local machine without depending on GitHub Actions
+- The public install path remains a single command that works on any system with Node and npm available
+- Package metadata, repository metadata, and release artifacts are aligned so users can discover the project, install it, and verify the installed version cleanly
+- Automated verification covers the packaged artifact, publish prerequisites, and at least one realistic install path from a built release artifact
+
+Plans:
+- [x] 09-01 - Harden package metadata and define the public install contract
+- [x] 09-02 - Add local release tooling and publish orchestration
+- [x] 09-03 - Document local release operations and verify the install/update path
