@@ -8,6 +8,7 @@ import { join } from "node:path";
 function parseArgs(argv) {
   const args = {
     publish: false,
+    githubRelease: false,
     tag: undefined,
     otp: undefined,
     allowDirty: false,
@@ -30,6 +31,11 @@ function parseArgs(argv) {
 
     if (value === "--publish") {
       args.publish = true;
+      continue;
+    }
+
+    if (value === "--github-release") {
+      args.githubRelease = true;
       continue;
     }
 
@@ -102,6 +108,8 @@ function printHelp() {
 Options:
   <version>       Set package.json to this semver before releasing (accepts v1.2.3)
   --publish       Publish the packed tarball to npm after validation
+  --github-release
+                  Push the current branch, create/push the matching git tag, and create a GitHub Release
   --tag <name>    Publish under a dist-tag such as latest or next
   --otp <code>    Pass a one-time password to npm publish
   --version <v>   Explicit version override, same as the positional version
@@ -232,18 +240,62 @@ function publishArtifact(filename, args, env) {
   run("npm", publishArgs, { env });
 }
 
+function publishGitHubRelease(version) {
+  const normalizedVersion = normalizeVersion(version);
+  const tag = `v${normalizedVersion}`;
+  const branch = run("git", ["branch", "--show-current"], { capture: true }).trim();
+
+  if (!branch) {
+    throw new Error("Could not determine the current git branch for release publishing.");
+  }
+
+  run("git", ["push", "origin", branch]);
+
+  let localTagExists = true;
+  try {
+    run("git", ["rev-parse", tag], { capture: true });
+  } catch {
+    localTagExists = false;
+  }
+
+  if (!localTagExists) {
+    run("git", ["tag", "-a", tag, "-m", tag]);
+  }
+
+  run("git", ["push", "origin", tag]);
+
+  let releaseExists = true;
+  try {
+    run("gh", ["release", "view", tag], { capture: true });
+  } catch {
+    releaseExists = false;
+  }
+
+  if (!releaseExists) {
+    run("gh", ["release", "create", tag, "--verify-tag", "--title", tag, "--notes-file", ".github-release-notes.md"]);
+  } else {
+    console.log(`GitHub Release ${tag} already exists; skipping create.`);
+  }
+}
+
 function printNextSteps(args, filename) {
   console.log("\nRelease checks passed.");
   console.log(`Tarball verified: ${filename}`);
 
   if (args.publish) {
     console.log("npm publish completed.");
-    console.log("Recommended follow-up: push the matching git tag and create a GitHub Release note for the published version.");
+    if (args.githubRelease) {
+      console.log("Git tag and GitHub Release completed.");
+    } else {
+      console.log("Recommended follow-up: push the matching git tag and create a GitHub Release note for the published version.");
+    }
     return;
   }
 
   console.log("Dry run only. To publish the verified tarball, rerun:");
-  console.log(`npm run release:local --${args.version ? ` ${args.version}` : ""} --publish${args.tag ? ` --tag ${args.tag}` : ""}`);
+  console.log(
+    `npm run release:local --${args.version ? ` ${args.version}` : ""} --publish${args.githubRelease ? " --github-release" : ""}${args.tag ? ` --tag ${args.tag}` : ""}`,
+  );
 }
 
 async function main() {
@@ -269,6 +321,12 @@ async function main() {
       tarball = packArtifact();
       if (args.publish) {
         publishArtifact(tarball, args, tokenAuth?.env);
+        if (args.githubRelease) {
+          if (!args.version) {
+            throw new Error("A version is required when using --github-release.");
+          }
+          publishGitHubRelease(args.version);
+        }
       }
       printNextSteps(args, tarball);
     } finally {
