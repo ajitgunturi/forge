@@ -1,6 +1,9 @@
-import { PreparedDiscussionDigest } from '../../contracts/discussions.js';
+import path from 'node:path';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { PreparedDiscussionDigest, DiscussionAnalysisTrace } from '../../contracts/discussions.js';
 import { DiscussionArtifactsRequiredError } from '../../lib/errors.js';
 import { loadLatestPreparedDiscussionDigest, prepareLatestDiscussionDigest } from './prepare.js';
+import { deriveSidecarContext } from '../sidecar.js';
 
 export interface RunDiscussionAnalyzerOptions {
   cwd: string;
@@ -13,7 +16,9 @@ export async function runDiscussionAnalyzer(options: RunDiscussionAnalyzerOption
     ? await prepareLatestDiscussionDigest(options.cwd)
     : (await loadOrPrepareDigest(options.cwd));
 
-  return renderAnswer(digest, options.question);
+  const answer = renderAnswer(digest, options.question);
+  await persistAnalysisTrace(options.cwd, digest, options.question, answer);
+  return answer;
 }
 
 async function loadOrPrepareDigest(cwd: string): Promise<PreparedDiscussionDigest> {
@@ -118,4 +123,65 @@ function shouldIncludeEffectivenessSection(question: string): boolean {
   return ['effectiveness', 'support quality', 'response time', 'sla', 'performance'].some((keyword) =>
     question.includes(keyword)
   );
+}
+
+async function persistAnalysisTrace(
+  cwd: string,
+  digest: PreparedDiscussionDigest,
+  question: string,
+  answer: string,
+): Promise<void> {
+  const context = deriveSidecarContext(cwd);
+  const timestamp = new Date().toISOString();
+  const traceId = `${digest.id}-${timestamp.replace(/[:.]/g, '-')}`;
+  const runsPath = path.join(context.sidecarPath, 'discussions', 'analysis', 'runs');
+  const runDir = path.join(runsPath, traceId);
+  await mkdir(runDir, { recursive: true });
+
+  const trace: DiscussionAnalysisTrace = {
+    version: '1.0',
+    id: traceId,
+    timestamp,
+    question,
+    repository: digest.repository,
+    digestId: digest.id,
+    sourceRunId: digest.sourceRunId,
+    answer,
+    digest,
+  };
+
+  await writeFile(path.join(runDir, 'trace.json'), JSON.stringify(trace, null, 2), 'utf8');
+  await writeFile(path.join(runDir, 'question.txt'), `${question.trim()}\n`, 'utf8');
+  await writeFile(path.join(runDir, 'answer.md'), answer, 'utf8');
+  await writeFile(path.join(runDir, 'digest.json'), JSON.stringify(digest, null, 2), 'utf8');
+  await writeFile(path.join(runDir, 'digest.md'), renderDigestSnapshot(digest), 'utf8');
+
+  await writeFile(path.join(context.sidecarPath, 'discussions', 'analysis', 'latest-answer.json'), JSON.stringify(trace, null, 2), 'utf8');
+  await writeFile(path.join(context.sidecarPath, 'discussions', 'analysis', 'latest-answer.md'), answer, 'utf8');
+}
+
+function renderDigestSnapshot(digest: PreparedDiscussionDigest): string {
+  const lines = [
+    `# Analysis Input Digest: ${digest.repository.owner}/${digest.repository.name}`,
+    '',
+    `**Digest ID:** \`${digest.id}\`  `,
+    `**Source Run:** \`${digest.sourceRunId}\`  `,
+    `**Timestamp:** ${digest.timestamp}  `,
+    `**Discussion Count:** ${digest.totals.discussions}  `,
+    '',
+    '## Records',
+    '',
+  ];
+
+  for (const record of digest.records) {
+    lines.push(`### #${record.number}: ${record.title}`);
+    lines.push(`- Status: ${record.status}`);
+    lines.push(`- Kind: ${record.kind}`);
+    lines.push(`- Category: ${record.category}`);
+    lines.push(`- Issue: ${record.issue}`);
+    lines.push(`- Resolution: ${record.resolution}`);
+    lines.push('');
+  }
+
+  return lines.join('\n').trim();
 }

@@ -103,3 +103,15 @@ export interface PreparedDiscussionDigest {
   };
   records: PreparedDiscussionRecord[];
 }
+
+export interface DiscussionAnalysisTrace {
+  version: '1.0';
+  id: string;
+  timestamp: string;
+  question: string;
+  repository: GitHubRepositoryRef;
+  digestId: string;
+  sourceRunId: string;
+  answer: string;
+  digest: PreparedDiscussionDigest;
+}

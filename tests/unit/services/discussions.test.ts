@@ -282,5 +282,25 @@ describe('Discussions services', () => {
 
     expect(answer).toContain('Pattern Analysis');
     expect(answer).toContain('Patterns in support');
+
+    const latestAnswerRaw = await readFile(
+      join(tempDir, '.forge/discussions/analysis/latest-answer.json'),
+      'utf8',
+    );
+    const latestAnswer = JSON.parse(latestAnswerRaw) as {
+      question: string;
+      answer: string;
+      digestId: string;
+    };
+
+    expect(latestAnswer.question).toBe('What recurring patterns are visible in support discussions?');
+    expect(latestAnswer.answer).toContain('Pattern Analysis');
+    expect(latestAnswer.digestId).toBe('2026-03-03T10-00-00-000Z-analysis');
+
+    const latestAnswerMarkdown = await readFile(
+      join(tempDir, '.forge/discussions/analysis/latest-answer.md'),
+      'utf8',
+    );
+    expect(latestAnswerMarkdown).toContain('GitHub Discussions Digest');
   });
 });
