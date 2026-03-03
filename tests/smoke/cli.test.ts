@@ -103,6 +103,7 @@ describe('CLI Smoke Tests - Installer Flow', () => {
       expect(copilotAnalyzer).toContain('node "$HOME/.copilot/forge/bin/forge.mjs" --run forge-discussion-analyzer --question');
       expect(copilotAnalyzer).toContain('Ask for approval once for the Forge command');
       expect(copilotAnalyzer).toContain('Do not run npm install, repair Forge dependencies, or switch to raw gh api graphql');
+      expect(copilotAnalyzer).toContain('If Forge fails or times out because of network or GitHub API issues, report the Forge failure and stop');
       expect(copilotAnalyzer).toContain('## Instructions');
       expect(copilotAnalyzer).toContain('- Use this summonable for discussion digests, triage, pattern analysis, and follow-up answers.');
       expect(copilotAnalyzer).toContain('## Commands');

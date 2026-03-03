@@ -34,4 +34,5 @@ Forge installs `forge-discussion-analyzer.agent.md` with a preserved user-custom
 
 - This discussion-analyzer works with GitHub Discussions only, not GitHub Issues.
 - Analysis traces are written to the repository `.forge` directory.
+- If Forge hits a network or GitHub API timeout, the installed Copilot agent is expected to report the Forge failure and stop rather than falling back to raw `gh api` calls.
 - More development and release details are in [CONTRIBUTING.md](/Users/ajitg/workspace/forge/CONTRIBUTING.md).

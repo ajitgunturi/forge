@@ -11,6 +11,7 @@ export const forgeDiscussionAnalyzerEntry: SummonableEntry = {
     `Treat \`${COPILOT_RUNTIME_ENTRY}\` as the only backend for this workflow.`,
     'Ask for approval once for the Forge command, then let Forge handle fetch plus analysis.',
     'Do not run npm install, repair Forge dependencies, or switch to raw gh api graphql when Forge is available.',
+    'If Forge fails or times out because of network or GitHub API issues, report the Forge failure and stop instead of falling back to gh api or any other direct GitHub access.',
     'Delegate data acquisition, filtering, preprocessing, and freshness handling to Forge.',
     'Suggest narrowing by category, relative windows, or explicit after/before dates when the user needs a smaller slice.',
   ].map((line) => `- ${line}`).join('\n'),
