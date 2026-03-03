@@ -73,6 +73,14 @@ export const SidecarMetadataSchema = z.object({
       artifactPath: z.string(),
       filterDescription: z.string().optional(),
     })).default([]),
+    preferences: z.object({
+      preferredCategory: z.object({
+        id: z.string().optional(),
+        name: z.string(),
+        slug: z.string(),
+        savedAt: z.string().datetime(),
+      }).optional(),
+    }).optional(),
   }).optional(),
 
   /**

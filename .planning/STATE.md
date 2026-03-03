@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: Phase 11
+current_phase: Phase 12
 status: completed
-last_updated: "2026-03-03T12:00:00.000Z"
+last_updated: "2026-03-03T14:55:00.000Z"
 progress:
-  total_phases: 11
-  completed_phases: 11
-  total_plans: 32
-  completed_plans: 32
+  total_phases: 12
+  completed_phases: 12
+  total_plans: 35
+  completed_plans: 35
   percent: 100
 ---
 
@@ -17,7 +17,7 @@ progress:
 
 **Last updated:** 2026-03-03
 **Current milestone:** v1
-**Current phase:** Phase 11
+**Current phase:** Phase 12
 **Status:** Complete
 
 ## Active Roadmap
@@ -33,6 +33,7 @@ progress:
 - [x] Phase 9: Release Management And Public Install
 - [x] Phase 10: Copilot Runtime Bootstrap And Install UX
 - [x] Phase 11: Runtime Self-Sufficiency And Agent Discipline
+- [x] Phase 12: Discussion Freshness And Category-Aware Answers
 
 ## Audit Closure
 
@@ -58,6 +59,11 @@ Foundational milestone audit gaps have been addressed. Phase 1 requirements are 
 - Scope refinement: the installed runtime should resolve its own dependencies during the initial `npx` install, and Copilot should seek approval once before letting Forge handle the full request.
 - Scope refinement: the public Copilot install surface should only include `forge-discussion-analyzer`; the generic `forge-agent` asset should be removed.
 - Phase 11 completed: Forge now bundles runtime dependencies into `~/.copilot/forge/node_modules`, installs only `forge-discussion-analyzer`, removes the legacy generic agent on reinstall, and documents the one-approval Forge-managed support model.
+- Phase 12 added: make discussion answers freshness-aware for explicit time-scoped requests, shorten issue redirection, and group answers by GitHub discussion categories.
+- Scope refinement: explicit date/time requests should trigger implicit force refresh, while questions about already-present local discussion data should continue using cached artifacts.
+- Scope refinement: issue requests should get a short discussions-only redirect that asks whether to inspect discussions for the same period instead.
+- Scope refinement: current/latest/fresh status requests should also trigger implicit refresh, while summary and gap-analysis prompts should stay on cached local discussion artifacts unless they explicitly ask for freshness.
+- Phase 12 completed: Forge now distinguishes cached-local summary/gap-analysis requests from freshness-sensitive current-status or time-bounded requests, groups answers by real GitHub discussion categories, and records refresh decisions in analysis traces.
 
 ## Quick Tasks Completed
 
@@ -74,4 +80,4 @@ Foundational milestone audit gaps have been addressed. Phase 1 requirements are 
 
 ## Next Action
 
-- Phase 11 is complete. Next action is user verification on a target Copilot system followed by the next product phase.
+- Phase 12 is complete. Next action is to validate the behavior against a real Copilot feedback session and then define the next product phase.

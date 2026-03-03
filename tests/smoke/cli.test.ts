@@ -68,7 +68,7 @@ describe('CLI Smoke Tests - Installer Flow', () => {
 
       expect(exitCode).toBe(0);
       expect(stdout).toContain(`Installing Forge Copilot runtime to ${globalCopilotPath}`);
-      expect(stdout).toContain(`Global install root: ${globalCopilotPath}`);
+      expect(stdout).toContain('✅ copilot');
       expect(await fileExists(join(globalCopilotPath, 'agents/forge-discussion-analyzer.agent.md'))).toBe(true);
       expect(await fileExists(join(globalCopilotPath, 'forge/bin/forge.mjs'))).toBe(true);
       expect(await fileExists(join(globalCopilotPath, 'forge/dist/cli.js'))).toBe(true);
@@ -103,6 +103,28 @@ describe('CLI Smoke Tests - Installer Flow', () => {
       expect(copilotAnalyzer).toContain('node "$HOME/.copilot/forge/bin/forge.mjs" --run forge-discussion-analyzer --question');
       expect(copilotAnalyzer).toContain('Ask for approval once for the Forge command');
       expect(copilotAnalyzer).toContain('Do not run npm install, repair Forge dependencies, or switch to raw gh api graphql');
+      expect(copilotAnalyzer).toContain('## Instructions');
+      expect(copilotAnalyzer).toContain('- Use this summonable for discussion digests, triage, pattern analysis, and follow-up answers.');
+      expect(copilotAnalyzer).toContain('## Commands');
+      expect(copilotAnalyzer).toContain('- **/agent forge-discussion-analyzer**');
+      expect(copilotAnalyzer).toContain('<!-- BEGIN FORGE MANAGED BLOCK -->');
+      expect(copilotAnalyzer).toContain('<!-- BEGIN USER CUSTOMIZATIONS -->');
+    });
+
+    it('preserves user customizations inside the Copilot agent file on reinstall', async () => {
+      await runCLI([], tempRepoPath);
+      const agentPath = join(tempHomePath, '.copilot/agents/forge-discussion-analyzer.agent.md');
+      const customized = (await readFile(agentPath, 'utf8')).replace(
+        '<!-- Add team- or user-specific Copilot instructions below this line. -->',
+        'Team custom instruction: escalate billing issues to the support lead.',
+      );
+      await writeFile(agentPath, customized, 'utf8');
+
+      await runCLI([], tempRepoPath);
+
+      const reloaded = await readFile(agentPath, 'utf8');
+      expect(reloaded).toContain('Team custom instruction: escalate billing issues to the support lead.');
+      expect(reloaded).toContain('<!-- BEGIN FORGE MANAGED BLOCK -->');
     });
 
     it('writes installer metadata for reruns and bundled runtime state', async () => {
@@ -156,6 +178,18 @@ describe('CLI Smoke Tests - Installer Flow', () => {
       expect(stdout).toContain('Usage: forge');
       expect(stdout).toContain('Install the Forge Copilot runtime into ~/.copilot');
     });
+
+    it('shows installer detail lines only in verbose mode', async () => {
+      const defaultRun = await runCLI([]);
+      await rm(tempHomePath, { recursive: true, force: true });
+      tempHomePath = await mkdtemp(join(tmpdir(), 'forge-home-test-'));
+      const verboseRun = await runCLI(['--verbose']);
+
+      expect(defaultRun.stdout).not.toContain('installed bundled runtime to');
+      expect(defaultRun.stdout).not.toContain('updated manifest');
+      expect(verboseRun.stdout).toContain('installed bundled runtime to');
+      expect(verboseRun.stdout).toContain('bundled tool entry:');
+    });
   });
 
   describe('help surface', () => {
@@ -198,6 +232,7 @@ describe('CLI Smoke Tests - Installer Flow', () => {
             discussions: 1,
             statuses: { unresolved: 1 },
             kinds: { consultation: 1 },
+            categories: { Ideas: 1 },
           },
           records: [
             {
@@ -205,6 +240,8 @@ describe('CLI Smoke Tests - Installer Flow', () => {
               title: 'Patterns in support',
               url: 'https://github.com/ajitgunturi/forge/discussions/101',
               category: 'Ideas',
+              categorySlug: 'ideas',
+              createdAt: '2026-03-03T08:00:00.000Z',
               status: 'unresolved',
               kind: 'consultation',
               issue: 'Users repeatedly ask about authentication setup and filtering.',
@@ -227,6 +264,8 @@ describe('CLI Smoke Tests - Installer Flow', () => {
 
       expect(exitCode).toBe(0);
       expect(stdout).toContain('GitHub Discussions Digest');
+      expect(stdout).toContain('## Category Summary');
+      expect(stdout).toContain('## Ideas');
       expect(stdout).toContain('Pattern Analysis');
       expect(stdout).toContain('Patterns in support');
     });

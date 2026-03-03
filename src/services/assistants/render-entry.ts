@@ -17,47 +17,49 @@ export class EntryRenderer {
   renderToMarkdown(entry: SummonableEntry): string {
     const lines: string[] = [];
 
-    // Header and Purpose
     lines.push(`# ${entry.displayName}`);
     lines.push('');
     lines.push(entry.purpose);
     lines.push('');
 
-    // Instructions
     lines.push('## Instructions');
-    lines.push(entry.instructions);
+    const instructionLines = entry.instructions
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean);
+    for (const line of instructionLines) {
+      lines.push(line.startsWith('- ') ? line : `- ${line}`);
+    }
     lines.push('');
 
-    // Commands
     if (entry.commands.length > 0) {
       lines.push('## Commands');
       lines.push('');
       for (const cmd of entry.commands) {
-        lines.push(`### ${cmd.name}`);
-        lines.push(cmd.description);
-        lines.push('');
-        lines.push(`Usage: \`${cmd.usage}\``);
-        lines.push('');
+        lines.push(`- **${cmd.name}**`);
+        lines.push(`  ${cmd.description}`);
+        lines.push(`  Usage: \`${cmd.usage}\``);
         if (cmd.examples && cmd.examples.length > 0) {
-          lines.push('Examples:');
+          lines.push('  Examples:');
           for (const example of cmd.examples) {
-            lines.push(`- \`${example}\``);
+            lines.push(`  - \`${example}\``);
           }
-          lines.push('');
         }
+        lines.push('');
       }
     }
 
-    // Capabilities
     if (entry.capabilities.length > 0) {
       lines.push('## Capabilities');
       for (const cap of entry.capabilities) {
         lines.push(`- **${cap.name}**: ${cap.description}`);
+        for (const benefit of cap.benefits) {
+          lines.push(`  - ${benefit}`);
+        }
       }
       lines.push('');
     }
 
-    // Principles
     if (entry.principles.length > 0) {
       lines.push('## Principles');
       for (const p of entry.principles) {

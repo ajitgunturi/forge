@@ -26,6 +26,16 @@ describe('MetadataService', () => {
     version: METADATA_VERSION,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
+    discussions: {
+      history: [],
+      preferences: {
+        preferredCategory: {
+          name: 'Customer Support',
+          slug: 'customer-support',
+          savedAt: new Date().toISOString(),
+        },
+      },
+    },
     history: [],
   };
 

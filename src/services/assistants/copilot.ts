@@ -79,6 +79,10 @@ export class CopilotAdapter implements AssistantAdapter {
 
 export const copilotAdapter = new CopilotAdapter();
 export const LEGACY_COPILOT_AGENT_IDS = ['forge-agent'];
+export const FORGE_MANAGED_START = '<!-- BEGIN FORGE MANAGED BLOCK -->';
+export const FORGE_MANAGED_END = '<!-- END FORGE MANAGED BLOCK -->';
+export const FORGE_USER_START = '<!-- BEGIN USER CUSTOMIZATIONS -->';
+export const FORGE_USER_END = '<!-- END USER CUSTOMIZATIONS -->';
 
 function renderCopilotAgent(entry: SummonableEntry): string {
   const description = sanitizePlainScalar(entry.purpose);
@@ -99,7 +103,14 @@ function renderCopilotAgent(entry: SummonableEntry): string {
     'color: blue',
     '---',
     '',
+    FORGE_MANAGED_START,
     body,
+    FORGE_MANAGED_END,
+    '',
+    FORGE_USER_START,
+    '<!-- Add team- or user-specific Copilot instructions below this line. -->',
+    '<!-- Keep your custom instructions outside Forge managed markers so updates preserve them. -->',
+    FORGE_USER_END,
   ].join('\n');
 }
 

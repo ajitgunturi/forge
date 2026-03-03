@@ -13,6 +13,7 @@ type PackageManifest = {
 
 type ProgramOptions = {
   cwd: string;
+  verbose?: boolean;
   fetchDiscussions?: boolean;
   run?: string;
   runSummonable?: string;
@@ -47,6 +48,7 @@ export async function createProgram(): Promise<Command> {
     .description("Install the Forge Copilot runtime into ~/.copilot and run Forge-managed GitHub discussion workflows.")
     .version(manifest.version ?? "0.0.0", "-v, --version", "output the current version")
     .option("--cwd <path>", "The working directory to run the command in.", process.cwd())
+    .option("--verbose", "Show detailed installer update output.")
     .option("--fetch-discussions", "Fetch GitHub Discussions for the current repository into .forge/discussions.")
     .option("--run <analyzer>", "Run a Forge-managed analyzer.")
     .option("--question <text>", "Question or request for Forge-managed summonable execution.")
@@ -78,7 +80,8 @@ export async function createProgram(): Promise<Command> {
       const answer = await runDiscussionAnalyzer({
         cwd: options.cwd,
         question: options.question ?? '',
-        refresh: options.refreshAnalysis || options.forceRefresh,
+        forceRefresh: options.forceRefresh,
+        refreshAnalysis: options.refreshAnalysis,
         token: options.githubToken,
         when: options.when,
         after: options.after,
@@ -106,7 +109,7 @@ export async function createProgram(): Promise<Command> {
       return;
     }
 
-    await installAssistantsCommand(options.cwd);
+    await installAssistantsCommand(options.cwd, { verbose: options.verbose });
   });
 
   return program;

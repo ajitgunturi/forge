@@ -72,6 +72,7 @@ export function buildPreparedDiscussionDigest(run: DiscussionRun): PreparedDiscu
       discussions: records.length,
       statuses: countBy(records.map((record) => record.status)),
       kinds: countBy(records.map((record) => record.kind)),
+      categories: countBy(records.map((record) => record.category)),
     },
     records,
   };
@@ -121,6 +122,7 @@ function buildPreparedRecord(discussion: DiscussionRun['discussions'][number]): 
     title: discussion.title,
     url: discussion.url,
     category: discussion.category.name,
+    categorySlug: discussion.category.slug,
     createdAt: discussion.createdAt,
     status,
     kind,

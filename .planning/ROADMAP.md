@@ -238,4 +238,27 @@ Eliminate follow-on install prompts and tighten agent behavior so the installed 
 Plans:
 - [x] 11-01 - Make the bundled ~/.copilot runtime dependency-complete at install time
 - [x] 11-02 - Tighten Copilot agent instructions and one-approval execution behavior
+- [x] 11-03 - Verify runtime self-sufficiency and agent-discipline feedback scenarios
+
+## Phase 12: Discussion Freshness And Category-Aware Answers (Complete)
+
+Make the Forge discussion analyzer fetch fresh context when the user explicitly scopes by time, keep issue redirection terse, and present discussion results under real GitHub category groupings.
+
+**Goal:** Make `forge-discussion-analyzer` behave like a discussion-native support tool by auto-refreshing when the user asks for current/fresh/latest status or other explicitly time-bounded discussion slices, redirecting issue requests without verbose fallback output, and grouping reported findings under repository discussion categories.
+**Requirements:** EXTD-03
+**Depends on:** Phase 11
+**Plans:** 3 plans
+
+**Success criteria:**
+
+- Questions that ask for current/fresh/latest discussion status or explicitly bound discussions to a specific date or time window trigger a Forge-managed refresh automatically instead of depending on the user to say "force sync"
+- The analyzer distinguishes between requests that can use already-fetched local discussion artifacts for summaries, pattern-finding, and gap analysis and requests that require fresher data because the user asked for current status or a specific date/time slice
+- If a user asks for GitHub Issues, the analyzer responds briefly that it handles discussions only and asks whether to inspect discussions for the requested period instead of returning a long corrective explanation
+- Discussion answers present findings grouped by the repository's actual GitHub discussion categories, with relevant summaries, counts, and statuses shown under each category
+- Freshness-aware behavior and category-grouped rendering are covered by unit tests and at least one end-to-end feedback-style verification scenario
+
+Plans:
+- [x] 12-01 - Add request-intent parsing and implicit refresh orchestration
+- [x] 12-02 - Refactor analyzer output to be category-first and shorten issue redirection
+- [x] 12-03 - Persist freshness trace metadata and add feedback-style verification/UAT
 - [x] 11-03 - Verify the feedback scenario and document the support expectations

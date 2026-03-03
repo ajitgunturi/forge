@@ -11,7 +11,14 @@ import {
   readInstallerRuntimeMetadata,
   writeInstallerRuntimeMetadata,
 } from '../metadata.js';
-import { COPILOT_RUNTIME_ENTRY, LEGACY_COPILOT_AGENT_IDS } from './copilot.js';
+import {
+  COPILOT_RUNTIME_ENTRY,
+  FORGE_MANAGED_END,
+  FORGE_MANAGED_START,
+  FORGE_USER_END,
+  FORGE_USER_START,
+  LEGACY_COPILOT_AGENT_IDS,
+} from './copilot.js';
 
 /**
  * AssistantInstallService: Orchestrates the installation and update of 
@@ -168,7 +175,9 @@ export class AssistantInstallService {
         // File does not exist, which is fine
       }
 
-      if (existingContent === content) {
+      const nextContent = this.mergeManagedContent(adapter, content, existingContent);
+
+      if (existingContent === nextContent) {
         return {
           id: adapter.id,
           status: 'skipped',
@@ -178,14 +187,14 @@ export class AssistantInstallService {
       }
 
       // Write or update the file
-      await fs.writeFile(targetPath, content, 'utf8');
+      await fs.writeFile(targetPath, nextContent, 'utf8');
 
       return {
         id: adapter.id,
         status: 'success',
-        message: existingContent === null 
-          ? `Successfully installed ${adapter.name} entry.` 
-          : `Successfully updated ${adapter.name} entry.`,
+        message: existingContent === null
+          ? `installed ${adapter.name} summonables at ${path.dirname(targetPath)}.`
+          : `updated ${adapter.name} summonables at ${path.dirname(targetPath)}.`,
         filePath: targetPath,
       };
     } catch (error) {
@@ -195,6 +204,18 @@ export class AssistantInstallService {
         message: `Failed to write ${adapter.name} entry to ${targetPath}: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+  }
+
+  private mergeManagedContent(adapter: AssistantAdapter, renderedContent: string, existingContent: string | null): string {
+    if (adapter.id !== 'copilot' || existingContent === null) {
+      return renderedContent;
+    }
+
+    if (existingContent.includes(FORGE_MANAGED_START) && existingContent.includes(FORGE_MANAGED_END)) {
+      return replaceManagedBlock(existingContent, renderedContent);
+    }
+
+    return migrateLegacyContent(renderedContent, existingContent);
   }
 
   private async prepareRuntime(
@@ -305,6 +326,60 @@ export class AssistantInstallService {
     details.push(`bundled tool entry: ${COPILOT_RUNTIME_ENTRY.replace('$HOME', os.homedir())}`);
     return details;
   }
+}
+
+function replaceManagedBlock(existingContent: string, renderedContent: string): string {
+  const renderedManaged = extractManagedSection(renderedContent);
+  const existingManaged = extractManagedSection(existingContent);
+
+  if (!renderedManaged || !existingManaged) {
+    return renderedContent;
+  }
+
+  const withManagedUpdated = existingContent.replace(existingManaged.fullMatch, renderedManaged.fullMatch);
+  const renderedUser = extractUserSection(renderedContent);
+  const existingUser = extractUserSection(withManagedUpdated);
+
+  if (!existingUser && renderedUser) {
+    return `${withManagedUpdated.trimEnd()}\n\n${renderedUser.fullMatch}\n`;
+  }
+
+  return withManagedUpdated;
+}
+
+function migrateLegacyContent(renderedContent: string, existingContent: string): string {
+  const frontmatterMatch = renderedContent.match(/^---\n[\s\S]*?\n---\n/);
+  const renderedManaged = extractManagedSection(renderedContent);
+  const renderedUser = extractUserSection(renderedContent);
+
+  if (!frontmatterMatch || !renderedManaged || !renderedUser) {
+    return renderedContent;
+  }
+
+  const userContent = stripYamlFrontmatter(existingContent).trim();
+  const migratedUser = userContent
+    ? `${FORGE_USER_START}\n${userContent}\n${FORGE_USER_END}`
+    : renderedUser.fullMatch;
+
+  return `${frontmatterMatch[0]}${renderedManaged.fullMatch}\n\n${migratedUser}\n`;
+}
+
+function extractManagedSection(content: string): { fullMatch: string } | null {
+  const match = content.match(new RegExp(`${escapeForRegex(FORGE_MANAGED_START)}[\\s\\S]*?${escapeForRegex(FORGE_MANAGED_END)}`));
+  return match ? { fullMatch: match[0] } : null;
+}
+
+function extractUserSection(content: string): { fullMatch: string } | null {
+  const match = content.match(new RegExp(`${escapeForRegex(FORGE_USER_START)}[\\s\\S]*?${escapeForRegex(FORGE_USER_END)}`));
+  return match ? { fullMatch: match[0] } : null;
+}
+
+function stripYamlFrontmatter(content: string): string {
+  return content.replace(/^---\n[\s\S]*?\n---\n?/, '');
+}
+
+function escapeForRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 export const assistantInstallService = new AssistantInstallService();

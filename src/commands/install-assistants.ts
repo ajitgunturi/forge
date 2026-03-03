@@ -7,7 +7,7 @@ import { AssistantId, AssistantOperationResult } from '../contracts/assistants.j
  *
  * Other assistant adapters remain in the codebase but are not exposed in the user-facing CLI yet.
  */
-export async function installAssistantsCommand(cwd: string): Promise<void> {
+export async function installAssistantsCommand(cwd: string, options: { verbose?: boolean } = {}): Promise<void> {
   try {
     const requestedAssistants: AssistantId[] = ['copilot'];
     const copilotRoot = `${os.homedir()}/.copilot`;
@@ -16,15 +16,14 @@ export async function installAssistantsCommand(cwd: string): Promise<void> {
 
     const results = await assistantInstallService.installDefaultSummonables(cwd, requestedAssistants);
 
-    console.log('\nAssistant Status Summary:');
-    console.log('-------------------------');
-
     let hasSuccess = false;
     for (const result of results) {
       const statusIcon = getStatusIcon(result.status);
       console.log(`${statusIcon} ${result.id.padEnd(10)}: ${result.message}`);
-      for (const detail of result.details ?? []) {
-        console.log(`   · ${detail}`);
+      if (options.verbose) {
+        for (const detail of result.details ?? []) {
+          console.log(`   · ${detail}`);
+        }
       }
       if (result.status === 'success' || result.status === 'skipped') {
         hasSuccess = true;
@@ -32,8 +31,6 @@ export async function installAssistantsCommand(cwd: string): Promise<void> {
     }
     
     if (hasSuccess) {
-      console.log('\nSuccess! Forge Copilot runtime is ready.');
-      console.log(`Global install root: ${copilotRoot}`);
       console.log('You can now use Copilot /agent with forge-discussion-analyzer.');
     } else {
       console.log('\nCopilot summonables were not installed or updated. Check the status messages above.');
@@ -49,7 +46,7 @@ export async function installAssistantsCommand(cwd: string): Promise<void> {
 function getStatusIcon(status: AssistantOperationResult['status']): string {
   switch (status) {
     case 'success': return '✅';
-    case 'skipped': return '⏭️ ';
+    case 'skipped': return '⏭️';
     case 'no-op':   return '➖';
     case 'failed':  return '❌';
     default:        return '❓';

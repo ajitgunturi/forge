@@ -80,6 +80,7 @@ export interface PreparedDiscussionRecord {
   title: string;
   url: string;
   category: string;
+  categorySlug: string;
   createdAt: string;
   status: DiscussionStatus;
   kind: DiscussionKind;
@@ -101,6 +102,7 @@ export interface PreparedDiscussionDigest {
     discussions: number;
     statuses: Record<string, number>;
     kinds: Record<string, number>;
+    categories: Record<string, number>;
   };
   records: PreparedDiscussionRecord[];
 }
@@ -113,6 +115,17 @@ export interface DiscussionAnalysisTrace {
   repository: GitHubRepositoryRef;
   digestId: string;
   sourceRunId: string;
+  decision: {
+    refreshUsed: boolean;
+    refreshReason: string;
+    source: 'explicit-refresh' | 'implicit-refresh' | 'cached-digest' | 'rebuild-latest-run';
+    parsedFilters: {
+      when?: string;
+      after?: string;
+      before?: string;
+      category?: string;
+    };
+  };
   answer: string;
   digest: PreparedDiscussionDigest;
 }
