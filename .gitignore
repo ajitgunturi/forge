@@ -1,3 +1,10 @@
 dist
+dist/
 *.tgz
 .forge
+.forge/
+coverage
+node_modules/
+.DS_Store
+*.log
+*.lock

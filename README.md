@@ -1,89 +1,23 @@
-# Forge AI Assist
+# Forge
 
-Forge installs a self-contained GitHub Copilot runtime under `~/.copilot` and runs Forge-managed GitHub Discussions workflows from there.
+Forge installs a GitHub Copilot discussion-analysis runtime under `~/.copilot`.
 
 ## Install
 
-Run the installer:
-
 ```bash
 npx forge-ai-assist@latest
 ```
 
-This installs Forge globally into:
+## Use
 
-```bash
-~/.copilot
-```
+In Copilot:
 
-Forge bootstraps:
+1. Run `/agent`
+2. Select `forge-discussion-analyzer`
+3. Ask a question about GitHub Discussions
 
-- `~/.copilot/agents/forge-discussion-analyzer.agent.md`
-- `~/.copilot/forge/dist/*`
-- `~/.copilot/forge/node_modules/*`
-- `~/.copilot/forge/bin/forge.mjs`
-- `~/.copilot/forge/VERSION`
-- `~/.copilot/forge/forge-file-manifest.json`
+## Notes
 
-After installation, Copilot should discover:
-
-- `forge-discussion-analyzer`
-
-The bundled runtime entry used by installed agents is:
-
-```bash
-node "$HOME/.copilot/forge/bin/forge.mjs"
-```
-
-## Local Development
-
-From this repository:
-
-```bash
-npm install
-npm run build
-npm link
-forge
-```
-
-## Verify Install
-
-Check the installed runtime:
-
-```bash
-ls ~/.copilot/agents
-ls ~/.copilot/forge/bin
-ls ~/.copilot/forge/node_modules
-cat ~/.copilot/forge/VERSION
-node "$HOME/.copilot/forge/bin/forge.mjs" --help
-```
-
-You should see `forge-discussion-analyzer.agent.md`, the bundled runtime entry at `~/.copilot/forge/bin/forge.mjs`, and a populated `~/.copilot/forge/node_modules` directory. Manual `npm install` inside `~/.copilot/forge` is not part of the supported flow.
-
-## GitHub Discussions
-
-Forge's discussions workflows require either `GH_TOKEN` or `GITHUB_TOKEN`:
-
-```bash
-export GH_TOKEN="$(gh auth token)"
-node "$HOME/.copilot/forge/bin/forge.mjs" --fetch-discussions --when today
-node "$HOME/.copilot/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "What recurring issues show up this week?"
-```
-
-In Copilot, `forge-discussion-analyzer` should route the request through Forge itself. The expected behavior is one approval for the Forge command path, then Forge handles fetch and analysis. It should not repair the bundled runtime or fall back to raw `gh api graphql` when Forge is available.
-
-## Updating
-
-To use the latest published version:
-
-```bash
-npx forge-ai-assist@latest
-```
-
-To confirm the installed CLI version:
-
-```bash
-node "$HOME/.copilot/forge/bin/forge.mjs" --version
-```
-
-Maintainer release steps live in [docs/releasing.md](/Users/ajitg/workspace/forge/docs/releasing.md).
+- This discussion-analyzer works with GitHub Discussions only, not GitHub Issues.
+- Analysis traces are written to the repository `.forge` directory.
+- More development and release details are in [CONTRIBUTING.md](/Users/ajitg/workspace/forge/CONTRIBUTING.md).
