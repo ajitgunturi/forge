@@ -1,4 +1,10 @@
-import { DiscussionCategory, DiscussionFilters, DiscussionRecord, GitHubRepositoryRef } from '../../contracts/discussions.js';
+import {
+  DiscussionCategory,
+  DiscussionCommentRecord,
+  DiscussionFilters,
+  DiscussionRecord,
+  GitHubRepositoryRef,
+} from '../../contracts/discussions.js';
 import { GitHubDiscussionsFetchError } from '../../lib/errors.js';
 import { matchesDiscussionWindow } from './filters.js';
 
@@ -41,8 +47,16 @@ const DISCUSSIONS_QUERY = `
             name
             slug
           }
-          comments {
+          comments(first: 100) {
             totalCount
+            nodes {
+              body
+              bodyText
+              createdAt
+              author {
+                login
+              }
+            }
           }
         }
       }
@@ -76,6 +90,12 @@ interface RepositoryDiscussionsResponse {
         category: DiscussionCategory;
         comments: {
           totalCount: number;
+          nodes: Array<{
+            body?: string | null;
+            bodyText?: string | null;
+            createdAt: string;
+            author?: { login?: string | null } | null;
+          }>;
         };
       }>;
     };
@@ -140,6 +160,7 @@ export async function fetchGitHubDiscussions(
         category: discussion.category,
         bodyText: discussion.bodyText,
         commentsCount: discussion.comments.totalCount,
+        comments: discussion.comments.nodes.map(normalizeCommentNode),
         upvoteCount: discussion.upvoteCount,
       }))
       .filter((discussion) => matchesDiscussionWindow(discussion.updatedAt, options.filters));
@@ -166,6 +187,20 @@ export async function fetchGitHubDiscussions(
       fetchedPages,
     },
     resolvedCategory,
+  };
+}
+
+function normalizeCommentNode(node: {
+  body?: string | null;
+  bodyText?: string | null;
+  createdAt: string;
+  author?: { login?: string | null } | null;
+}): DiscussionCommentRecord {
+  return {
+    body: node.body ?? undefined,
+    bodyText: node.bodyText ?? node.body ?? '',
+    author: node.author?.login ?? undefined,
+    createdAt: node.createdAt,
   };
 }
 

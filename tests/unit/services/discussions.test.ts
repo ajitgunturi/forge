@@ -69,6 +69,13 @@ describe('Discussions services', () => {
           },
           bodyText: 'Please add repository sync support.',
           commentsCount: 2,
+          comments: [
+            {
+              bodyText: 'cc @retina for repo automation details',
+              author: 'maintainer',
+              createdAt: '2026-03-03T08:30:00.000Z',
+            },
+          ],
           upvoteCount: 5,
         },
       ],
@@ -168,7 +175,17 @@ describe('Discussions services', () => {
                     upvoteCount: 4,
                     author: { login: 'ajitg' },
                     category: { id: 'cat1', name: 'Ideas', slug: 'ideas' },
-                    comments: { totalCount: 3 },
+                    comments: {
+                      totalCount: 3,
+                      nodes: [
+                        {
+                          body: 'Loop in @omnibase for fetch handling.',
+                          bodyText: 'Loop in @omnibase for fetch handling.',
+                          createdAt: '2026-03-03T09:05:00.000Z',
+                          author: { login: 'teammate' },
+                        },
+                      ],
+                    },
                   },
                 ],
               },
@@ -197,6 +214,7 @@ describe('Discussions services', () => {
     expect(result.resolvedCategory?.slug).toBe('ideas');
     expect(result.discussions).toHaveLength(1);
     expect(result.discussions[0]?.title).toBe('Filterable fetch');
+    expect(result.discussions[0]?.comments[0]?.bodyText).toContain('@omnibase');
   });
 
   it('paginates across multiple GitHub discussion pages', async () => {
@@ -245,7 +263,7 @@ describe('Discussions services', () => {
                   upvoteCount: 0,
                   author: { login: 'ajitg' },
                   category: { id: 'cat1', name: 'Ideas', slug: 'ideas' },
-                  comments: { totalCount: 2 },
+                  comments: { totalCount: 2, nodes: [] },
                 })),
               },
             },
@@ -277,7 +295,7 @@ describe('Discussions services', () => {
                   upvoteCount: 0,
                   author: { login: 'ajitg' },
                   category: { id: 'cat1', name: 'Ideas', slug: 'ideas' },
-                  comments: { totalCount: 2 },
+                  comments: { totalCount: 2, nodes: [] },
                 })),
               },
             },
@@ -333,6 +351,13 @@ describe('Discussions services', () => {
           category: { id: 'cat1', name: 'Q&A', slug: 'q-a' },
           bodyText: 'Install fails with a token error. Workaround is to export GH_TOKEN.',
           commentsCount: 4,
+          comments: [
+            {
+              bodyText: '@mss confirmed the token workaround resolves the install path.',
+              author: 'support',
+              createdAt: '2026-03-03T09:10:00.000Z',
+            },
+          ],
           upvoteCount: 2,
         },
       ],
@@ -342,6 +367,8 @@ describe('Discussions services', () => {
     expect(digest.records[0]?.issue).toContain('Install fails');
     expect(digest.records[0]?.createdAt).toBe('2026-03-03T08:00:00.000Z');
     expect(digest.records[0]?.categorySlug).toBe('q-a');
+    expect(digest.records[0]?.teamMentions).toContain('@mss');
+    expect(digest.records[0]?.searchableText).toContain('token workaround');
   });
 
   it('runs forge-discussion-analyzer from prepared sidecar artifacts', async () => {
@@ -375,6 +402,13 @@ describe('Discussions services', () => {
           category: { id: 'cat1', name: 'Ideas', slug: 'ideas' },
           bodyText: 'Users repeatedly ask about authentication setup and filtering. This is unresolved.',
           commentsCount: 2,
+          comments: [
+            {
+              bodyText: '@retina says the auth setup docs are still missing a step.',
+              author: 'ops',
+              createdAt: '2026-03-03T09:05:00.000Z',
+            },
+          ],
           upvoteCount: 1,
         },
       ],
@@ -453,6 +487,7 @@ describe('Discussions services', () => {
           category: { id: 'cat1', name: 'Ideas', slug: 'ideas' },
           bodyText: 'Count me.',
           commentsCount: 2,
+          comments: [],
           upvoteCount: 1,
         },
         {
@@ -467,6 +502,7 @@ describe('Discussions services', () => {
           category: { id: 'cat1', name: 'Ideas', slug: 'ideas' },
           bodyText: 'Do not count me.',
           commentsCount: 2,
+          comments: [],
           upvoteCount: 1,
         },
       ],
@@ -532,6 +568,7 @@ describe('Discussions services', () => {
           category: { id: 'cat1', name: 'Ideas', slug: 'ideas' },
           bodyText: 'Discussion for scope guard test.',
           commentsCount: 2,
+          comments: [],
           upvoteCount: 1,
         },
       ],
@@ -653,6 +690,7 @@ describe('Discussions services', () => {
           category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
           bodyText: 'Stale snapshot.',
           commentsCount: 2,
+          comments: [],
           upvoteCount: 1,
         },
       ],
@@ -674,6 +712,7 @@ describe('Discussions services', () => {
           category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
           bodyText: 'Fresh snapshot.',
           commentsCount: 2,
+          comments: [],
           upvoteCount: 1,
         },
       ],
@@ -749,6 +788,13 @@ describe('Discussions services', () => {
           category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
           bodyText: 'Customers report login failures. blocked on upstream identity service.',
           commentsCount: 2,
+          comments: [
+            {
+              bodyText: '@omnibase is investigating the upstream identity service dependency.',
+              author: 'support',
+              createdAt: '2026-03-03T09:15:00.000Z',
+            },
+          ],
           upvoteCount: 1,
         },
         {
@@ -763,6 +809,7 @@ describe('Discussions services', () => {
           category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
           bodyText: 'Customer asked about billing settings.',
           commentsCount: 3,
+          comments: [],
           upvoteCount: 1,
         },
         {
@@ -777,6 +824,13 @@ describe('Discussions services', () => {
           category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
           bodyText: 'Provisioning remains unresolved after retries.',
           commentsCount: 1,
+          comments: [
+            {
+              bodyText: '@mss still needs environment logs from the customer.',
+              author: 'triage',
+              createdAt: '2026-03-03T10:10:00.000Z',
+            },
+          ],
           upvoteCount: 1,
         },
       ],

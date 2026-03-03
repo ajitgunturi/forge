@@ -126,6 +126,15 @@ export function discussionsToMarkdown(run: DiscussionRun): string {
       lines.push('');
       lines.push(discussion.bodyText.slice(0, 280) || '(no body text)');
       lines.push('');
+      if (discussion.comments.length > 0) {
+        lines.push('#### Thread');
+        lines.push('');
+        for (const comment of discussion.comments) {
+          const author = comment.author ?? 'unknown';
+          lines.push(`- ${author} (${comment.createdAt}): ${comment.bodyText.slice(0, 280) || '(no body text)'}`);
+        }
+        lines.push('');
+      }
     }
   }
 

@@ -113,9 +113,9 @@ function deriveDiscussionAnalysisPaths(sidecarPath: string) {
 }
 
 function buildPreparedRecord(discussion: DiscussionRun['discussions'][number]): PreparedDiscussionRecord {
-  const normalizedBody = normalizeWhitespace(discussion.bodyText);
-  const kind = classifyDiscussionKind(discussion.title, discussion.category.name, normalizedBody);
-  const status = classifyDiscussionStatus(normalizedBody, discussion.answerChosenAt, discussion.commentsCount);
+  const searchableText = buildSearchableText(discussion);
+  const kind = classifyDiscussionKind(discussion.title, discussion.category.name, searchableText);
+  const status = classifyDiscussionStatus(searchableText, discussion.answerChosenAt, discussion.commentsCount);
 
   return {
     number: discussion.number,
@@ -126,10 +126,12 @@ function buildPreparedRecord(discussion: DiscussionRun['discussions'][number]): 
     createdAt: discussion.createdAt,
     status,
     kind,
-    issue: truncateSentence(normalizedBody, 220),
-    resolution: inferResolution(status, normalizedBody),
-    keyContext: extractKeyContext(normalizedBody),
+    issue: truncateSentence(searchableText, 220),
+    resolution: inferResolution(status, searchableText),
+    keyContext: extractKeyContext(searchableText),
     actionItems: inferActionItems(status, kind),
+    teamMentions: extractTeamMentions(searchableText),
+    searchableText,
     updatedAt: discussion.updatedAt,
   };
 }
@@ -178,6 +180,22 @@ function extractKeyContext(body: string): string[] {
     .map((part) => part.trim())
     .filter(Boolean)
     .slice(0, 3);
+}
+
+function buildSearchableText(discussion: DiscussionRun['discussions'][number]): string {
+  const segments = [
+    discussion.title,
+    discussion.category.name,
+    discussion.bodyText,
+    ...discussion.comments.map((comment) => comment.bodyText),
+  ];
+
+  return normalizeWhitespace(segments.filter(Boolean).join('. '));
+}
+
+function extractTeamMentions(body: string): string[] {
+  const matches = body.toLowerCase().match(/@[a-z0-9][a-z0-9-_]*/g) ?? [];
+  return [...new Set(matches)];
 }
 
 function inferActionItems(status: DiscussionStatus, kind: DiscussionKind): string[] {

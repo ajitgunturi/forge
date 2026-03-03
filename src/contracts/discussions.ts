@@ -19,6 +19,13 @@ export interface DiscussionFilters {
   limit: number;
 }
 
+export interface DiscussionCommentRecord {
+  body?: string;
+  bodyText: string;
+  author?: string;
+  createdAt: string;
+}
+
 export interface DiscussionRecord {
   id: string;
   number: number;
@@ -31,6 +38,7 @@ export interface DiscussionRecord {
   category: DiscussionCategory;
   bodyText: string;
   commentsCount: number;
+  comments: DiscussionCommentRecord[];
   upvoteCount: number;
 }
 
@@ -88,6 +96,8 @@ export interface PreparedDiscussionRecord {
   resolution: string;
   keyContext: string[];
   actionItems: string[];
+  teamMentions: string[];
+  searchableText: string;
   updatedAt: string;
 }
 
