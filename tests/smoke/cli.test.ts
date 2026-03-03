@@ -36,6 +36,18 @@ describe('CLI Smoke Tests - Installer Flow', () => {
     }
   };
 
+  const packArtifact = async () => {
+    const { stdout } = await execa('npm', ['pack', '--json'], { cwd: process.cwd() });
+    const parsed = JSON.parse(stdout) as Array<{ filename: string }>;
+    const filename = parsed[0]?.filename;
+
+    if (!filename) {
+      throw new Error('npm pack did not return a tarball filename');
+    }
+
+    return join(process.cwd(), filename);
+  };
+
   describe('default installer', () => {
     it('installs Copilot summonables from the default flow', async () => {
       const { exitCode, stdout } = await runCLI([], tempRepoPath);
@@ -144,10 +156,37 @@ describe('CLI Smoke Tests - Installer Flow', () => {
   describe('packaging metadata', () => {
     it('publishes the forge binary while keeping the package name', async () => {
       const manifestRaw = await readFile(join(process.cwd(), 'package.json'), 'utf8');
-      const manifest = JSON.parse(manifestRaw) as { name: string; bin: Record<string, string> };
+      const manifest = JSON.parse(manifestRaw) as {
+        name: string;
+        bin: Record<string, string>;
+        repository?: { url?: string };
+        publishConfig?: { access?: string };
+      };
 
       expect(manifest.name).toBe('forge-ai-assist');
       expect(manifest.bin).toEqual({ forge: './dist/cli.js' });
+      expect(manifest.repository?.url).toContain('github.com/ajitgunturi/forge.git');
+      expect(manifest.publishConfig?.access).toBe('public');
+    });
+
+    it('installs and runs from the packed tarball', async () => {
+      const tarballPath = await packArtifact();
+      const installPath = await mkdtemp(join(tmpdir(), 'forge-packed-install-'));
+
+      try {
+        await execa('npm', ['init', '-y'], { cwd: installPath });
+        await execa('npm', ['install', tarballPath], { cwd: installPath });
+
+        const forgeBin = join(installPath, 'node_modules', '.bin', 'forge');
+        const { stdout, exitCode } = await execa(forgeBin, ['--help'], { cwd: installPath });
+
+        expect(exitCode).toBe(0);
+        expect(stdout).toContain('Usage: forge');
+        expect(stdout).toContain('Install Forge Copilot summonables');
+      } finally {
+        await rm(installPath, { recursive: true, force: true });
+        await rm(tarballPath, { force: true });
+      }
     });
   });
 });

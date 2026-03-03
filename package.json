@@ -1,7 +1,23 @@
 {
   "name": "forge-ai-assist",
   "version": "0.1.0",
-  "description": "Forge AI Assist CLI",
+  "description": "Install and run Forge Copilot summonables for GitHub discussion analysis.",
+  "keywords": [
+    "copilot",
+    "github-discussions",
+    "ai-assistant",
+    "cli",
+    "forge"
+  ],
+  "homepage": "https://github.com/ajitgunturi/forge#readme",
+  "bugs": {
+    "url": "https://github.com/ajitgunturi/forge/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ajitgunturi/forge.git"
+  },
+  "license": "MIT",
   "type": "module",
   "bin": {
     "forge": "./dist/cli.js"
@@ -9,12 +25,18 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=22.0.0"
   },
   "scripts": {
     "build": "tsc --project tsconfig.json",
-    "smoke": "node dist/cli.js --assistants claude --yes",
+    "prepack": "npm run build",
+    "release:check": "npm run build && npm pack --dry-run",
+    "release:local": "node ./scripts/release-local.mjs",
+    "smoke": "node dist/cli.js",
     "test": "vitest run",
     "test:smoke": "vitest run tests/smoke",
     "test:coverage": "vitest run --coverage"
