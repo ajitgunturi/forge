@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { AssistantAdapter } from './registry.js';
-import { AssistantId, AssistantAvailability } from '../../contracts/assistants.js';
+import { AssistantId, AssistantAvailability, AssistantInstallLayout } from '../../contracts/assistants.js';
 import { SummonableEntry } from '../../contracts/summonable-entry.js';
 import { entryRenderer } from './render-entry.js';
 
@@ -31,6 +31,14 @@ export class CodexAdapter implements AssistantAdapter {
    */
   getInstallTarget(cwd: string, entry: SummonableEntry): string {
     return path.join(cwd, '.codex', `${entry.id}.md`);
+  }
+
+  resolveInstallLayout(cwd: string): AssistantInstallLayout {
+    const rootPath = path.join(cwd, '.codex');
+    return {
+      rootPath,
+      agentsPath: rootPath,
+    };
   }
 
   /**

@@ -1,3 +1,4 @@
+import os from 'node:os';
 import { assistantInstallService } from '../services/assistants/install.js';
 import { AssistantId, AssistantOperationResult } from '../contracts/assistants.js';
 
@@ -9,8 +10,9 @@ import { AssistantId, AssistantOperationResult } from '../contracts/assistants.j
 export async function installAssistantsCommand(cwd: string): Promise<void> {
   try {
     const requestedAssistants: AssistantId[] = ['copilot'];
+    const copilotRoot = `${os.homedir()}/.copilot`;
 
-    console.log('Installing Forge Copilot summonables...');
+    console.log(`Installing Forge Copilot runtime to ${copilotRoot}...`);
 
     const results = await assistantInstallService.installDefaultSummonables(cwd, requestedAssistants);
 
@@ -21,13 +23,17 @@ export async function installAssistantsCommand(cwd: string): Promise<void> {
     for (const result of results) {
       const statusIcon = getStatusIcon(result.status);
       console.log(`${statusIcon} ${result.id.padEnd(10)}: ${result.message}`);
+      for (const detail of result.details ?? []) {
+        console.log(`   · ${detail}`);
+      }
       if (result.status === 'success' || result.status === 'skipped') {
         hasSuccess = true;
       }
     }
     
     if (hasSuccess) {
-      console.log('\nSuccess! Forge Copilot summonables are ready.');
+      console.log('\nSuccess! Forge Copilot runtime is ready.');
+      console.log(`Global install root: ${copilotRoot}`);
       console.log('You can now use Copilot /agent with forge-discussion-analyzer.');
     } else {
       console.log('\nCopilot summonables were not installed or updated. Check the status messages above.');

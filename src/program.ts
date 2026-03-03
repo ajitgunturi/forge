@@ -41,7 +41,7 @@ export async function createProgram(): Promise<Command> {
 
   program
     .name(EXECUTABLE_NAME)
-    .description("Install Forge Copilot summonables and run Forge-managed GitHub discussion workflows.")
+    .description("Install the Forge Copilot runtime into ~/.copilot and run Forge-managed GitHub discussion workflows.")
     .version(manifest.version ?? "0.0.0", "-v, --version", "output the current version")
     .option("--cwd <path>", "The working directory to run the command in.", process.cwd())
     .option("--fetch-discussions", "Fetch GitHub Discussions for the current repository into .forge/discussions.")

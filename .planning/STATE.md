@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-current_phase: Phase 9
+current_phase: Phase 10
 status: complete
-last_updated: "2026-03-03T10:30:00.000Z"
+last_updated: "2026-03-03T11:35:00.000Z"
 progress:
-  total_phases: 9
-  completed_phases: 9
-  total_plans: 26
-  completed_plans: 26
+  total_phases: 10
+  completed_phases: 10
+  total_plans: 29
+  completed_plans: 29
   percent: 100
 ---
 
@@ -17,7 +17,7 @@ progress:
 
 **Last updated:** 2026-03-03
 **Current milestone:** v1
-**Current phase:** Phase 9
+**Current phase:** Phase 10
 **Status:** Complete
 
 ## Active Roadmap
@@ -31,6 +31,7 @@ progress:
 - [x] Phase 7: Installer Simplification And GitHub Discussions Ingest
 - [x] Phase 8: Cross-Assistant Forge Discussion Analyzer Summonable
 - [x] Phase 9: Release Management And Public Install
+- [x] Phase 10: Copilot Runtime Bootstrap And Install UX
 
 ## Audit Closure
 
@@ -49,6 +50,9 @@ Foundational milestone audit gaps have been addressed. Phase 1 requirements are 
 - Phase 9 added: establish local-machine release management and a public one-command install path for Forge.
 - Scope refinement: release builds and publishes should run from the maintainer's local machine for now, while installation must stay frictionless for any Node-capable system.
 - Phase 9 completed: Forge now has publish-facing package metadata, packed-artifact install verification, a local `release:local` workflow, and maintainer/user release documentation.
+- Phase 10 added: make the first-run installer succeed on fresh machines where the Copilot runtime layout does not exist yet.
+- Scope refinement: v1 remains Copilot-first, but the installer must always install globally into `~/.copilot` and make that runtime self-sufficient instead of depending on a project-local Forge package.
+- Phase 10 completed: Forge now installs a self-contained runtime under `~/.copilot`, writes bundled tools and installer metadata there, and installs Copilot agents that call the bundled runtime directly.
 
 ## Quick Tasks Completed
 
@@ -65,4 +69,4 @@ Foundational milestone audit gaps have been addressed. Phase 1 requirements are 
 
 ## Next Action
 
-- Phase 9 is complete. Next natural step is to authenticate npm on the maintainer machine and run the first real `npm run release:local -- --publish`.
+- Phase 10 is complete. Next natural step is to publish the updated package and verify the new `~/.copilot` runtime bootstrap flow on a clean target machine.

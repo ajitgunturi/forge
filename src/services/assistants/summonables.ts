@@ -1,4 +1,5 @@
 import { SummonableEntry } from '../../contracts/summonable-entry.js';
+import { COPILOT_RUNTIME_ENTRY } from './copilot.js';
 
 export const forgeAgentEntry: SummonableEntry = {
   id: 'forge-agent',
@@ -6,7 +7,7 @@ export const forgeAgentEntry: SummonableEntry = {
   purpose: 'You are a repository assistant that installs Forge entrypoints and can fetch GitHub Discussions into the Forge sidecar for later analysis.',
   instructions: [
     'Use Forge as the source of truth for repository-aware assistant workflows.',
-    'When the user asks to fetch GitHub Discussions, prefer running `npx forge-ai-assist@latest` with the discussions flags instead of improvising API calls.',
+    `When the user asks to fetch GitHub Discussions, prefer running \`${COPILOT_RUNTIME_ENTRY}\` with the discussions flags instead of improvising API calls.`,
     'Require a GitHub token through GH_TOKEN or GITHUB_TOKEN before fetching discussions.',
     'Prefer structured filters such as --when today, --when yesterday, --when last-week, --after <date>, --before <date>, and --category <slug-or-name>.',
     'Treat fetched discussion artifacts under .forge/discussions as observed source material for later analysis.',
@@ -33,11 +34,11 @@ export const forgeAgentEntry: SummonableEntry = {
     {
       name: '/fetch-discussions',
       description: 'Fetch GitHub Discussions for the current repository into .forge/discussions.',
-      usage: 'npx forge-ai-assist@latest --fetch-discussions',
+      usage: `${COPILOT_RUNTIME_ENTRY} --fetch-discussions`,
       examples: [
-        'npx forge-ai-assist@latest --fetch-discussions --when today',
-        'npx forge-ai-assist@latest --fetch-discussions --when last-week --category ideas',
-        'npx forge-ai-assist@latest --fetch-discussions --after 2026-03-01 --before 2026-03-03',
+        `${COPILOT_RUNTIME_ENTRY} --fetch-discussions --when today`,
+        `${COPILOT_RUNTIME_ENTRY} --fetch-discussions --when last-week --category ideas`,
+        `${COPILOT_RUNTIME_ENTRY} --fetch-discussions --after 2026-03-01 --before 2026-03-03`,
       ],
     },
   ],
@@ -55,7 +56,7 @@ export const forgeDiscussionAnalyzerEntry: SummonableEntry = {
   instructions: [
     'Use this summonable when the user wants a digest, triage, pattern analysis, or follow-up answer based on GitHub Discussions.',
     'Delegate data acquisition, filtering, and preprocessing to Forge instead of re-fetching or embedding large prompt instructions.',
-    'Prefer `npx forge-ai-assist@latest` for backend invocation because the bare `forge` binary may not be on PATH inside assistant execution environments.',
+    `Prefer \`${COPILOT_RUNTIME_ENTRY}\` for backend invocation because the installed Copilot runtime bundles Forge there.`,
     'Assume Forge owns the heavy runtime behavior and that the installed asset should stay compact.',
     'When needed, tell the user to fetch or refresh discussions with Forge before asking analysis questions.',
   ].join(' '),
@@ -75,10 +76,10 @@ export const forgeDiscussionAnalyzerEntry: SummonableEntry = {
     {
       name: '/agent forge-discussion-analyzer',
       description: 'Select the discussion analyzer summonable, then ask a question.',
-      usage: 'npx forge-ai-assist@latest --run-summonable forge-discussion-analyzer --question "<your question>"',
+      usage: `${COPILOT_RUNTIME_ENTRY} --run-summonable forge-discussion-analyzer --question "<your question>"`,
       examples: [
         '/agent -> select forge-discussion-analyzer -> "what were the major support themes last week?"',
-        'npx forge-ai-assist@latest --run-summonable forge-discussion-analyzer --question "summarize unresolved discussions"',
+        `${COPILOT_RUNTIME_ENTRY} --run-summonable forge-discussion-analyzer --question "summarize unresolved discussions"`,
       ],
     },
   ],

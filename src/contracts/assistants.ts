@@ -32,6 +32,15 @@ export interface AssistantAvailability {
   requirement?: string;
 }
 
+export interface AssistantInstallLayout {
+  rootPath: string;
+  agentsPath: string;
+  runtimePath?: string;
+  runtimeEntryPath?: string;
+  metadataPath?: string;
+  versionPath?: string;
+}
+
 /**
  * Result of an assistant installation or update operation.
  */
@@ -40,4 +49,5 @@ export interface AssistantOperationResult {
   status: 'success' | 'skipped' | 'failed' | 'no-op';
   message: string;
   filePath?: string;
+  details?: string[];
 }

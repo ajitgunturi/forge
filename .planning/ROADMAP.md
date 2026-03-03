@@ -193,3 +193,26 @@ Plans:
 - [x] 09-01 - Harden package metadata and define the public install contract
 - [x] 09-02 - Add local release tooling and publish orchestration
 - [x] 09-03 - Document local release operations and verify the install/update path
+
+## Phase 10: Copilot Runtime Bootstrap And Install UX (Complete)
+
+Make Forge install cleanly on a fresh target machine by bootstrapping a self-sufficient runtime under `~/.copilot`.
+
+**Goal:** Turn `npx forge-ai-assist@latest` into a robust first-run installer for GitHub Copilot that always installs globally into `~/.copilot`, bootstraps the required runtime payload there, and lets the installed agents invoke Forge-owned tools from that runtime instead of depending on a project-local Forge package.
+**Requirements:** EXTD-03
+**Depends on:** Phase 9
+**Plans:** 3 plans
+
+**Success criteria:**
+
+- Forge installs successfully on a fresh machine where `~/.copilot` has no existing agent runtime structure
+- The installer always targets `~/.copilot` and makes that destination explicit
+- Forge bootstraps any required directories, tools, and installer-owned metadata under `~/.copilot` instead of assuming the runtime already exists
+- The installed Copilot assets remain discoverable by `/agent` after a clean first-time install
+- The installed agents can invoke Forge-owned tools from inside `~/.copilot` without relying on a globally linked `forge` binary or a project-local package
+- The installer reports exactly what it created, updated, or replaced so first-run behavior is auditable and supportable
+
+Plans:
+- [x] 10-01 - Design the global Copilot installer UX and runtime payload model
+- [x] 10-02 - Bootstrap the ~/.copilot runtime, tools, and installer metadata
+- [x] 10-03 - Verify fresh-machine global installs and document the support model

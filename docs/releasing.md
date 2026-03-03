@@ -63,10 +63,13 @@ Recommended follow-up steps:
 
 1. Push the version commit and git tag
 2. Create or update a GitHub Release note for the published version
-3. Verify public install:
+3. Verify public install and bundled Copilot runtime:
 
 ```bash
-npx forge-ai-assist@latest --version
+npx forge-ai-assist@latest
+ls ~/.copilot/agents
+ls ~/.copilot/forge/bin
+node "$HOME/.copilot/forge/bin/forge.mjs" --version
 ```
 
 ## Failure Handling
@@ -74,3 +77,4 @@ npx forge-ai-assist@latest --version
 - If `NPM_TOKEN` is unset and `npm whoami` fails, the release script will try `npm login` unless you passed `--login never`
 - If tests fail, do not publish; fix the issue and rerun the release command
 - If publish succeeds but local cleanup fails, the release is already live; remove the tarball manually and proceed with tag/release-note cleanup
+- If a target machine has only `~/.copilot/ide/*.lock`, rerunning `npx forge-ai-assist@latest` should still bootstrap `~/.copilot/agents` and `~/.copilot/forge`

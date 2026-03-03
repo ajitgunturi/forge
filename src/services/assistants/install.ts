@@ -1,9 +1,17 @@
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { assistantRegistry, AssistantAdapter } from './registry.js';
-import { AssistantId, AssistantOperationResult } from '../../contracts/assistants.js';
+import { AssistantId, AssistantInstallLayout, AssistantOperationResult } from '../../contracts/assistants.js';
 import { SummonableEntry } from '../../contracts/summonable-entry.js';
 import { forgeSummonableEntries } from './summonables.js';
+import {
+  createInstallerRuntimeMetadata,
+  readInstallerRuntimeMetadata,
+  writeInstallerRuntimeMetadata,
+} from '../metadata.js';
+import { COPILOT_RUNTIME_ENTRY } from './copilot.js';
 
 /**
  * AssistantInstallService: Orchestrates the installation and update of 
@@ -89,6 +97,9 @@ export class AssistantInstallService {
       };
     }
 
+    const layout = adapter.resolveInstallLayout(cwd);
+    const bootstrap = await this.prepareRuntime(adapter, layout, entries);
+
     let installedCount = 0;
     let updatedCount = 0;
     let skippedCount = 0;
@@ -126,7 +137,8 @@ export class AssistantInstallService {
     return {
       id: adapter.id,
       status: 'success',
-      message: `${adapter.name} summonables ready (${segments.join(', ')}).`,
+      message: `${adapter.name} summonables ready at ${layout.rootPath} (${segments.join(', ')}).`,
+      details: bootstrap,
     };
   }
 
@@ -183,6 +195,94 @@ export class AssistantInstallService {
         message: `Failed to write ${adapter.name} entry to ${targetPath}: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+  }
+
+  private async prepareRuntime(
+    adapter: AssistantAdapter,
+    layout: AssistantInstallLayout,
+    entries: SummonableEntry[],
+  ): Promise<string[]> {
+    if (adapter.id !== 'copilot' || !layout.runtimePath || !layout.runtimeEntryPath || !layout.metadataPath || !layout.versionPath) {
+      return [];
+    }
+
+    const details: string[] = [];
+    const directories = [layout.rootPath, layout.agentsPath, layout.runtimePath, path.dirname(layout.runtimeEntryPath)];
+
+    for (const dir of directories) {
+      try {
+        await fs.access(dir);
+      } catch {
+        await fs.mkdir(dir, { recursive: true });
+        details.push(`created ${dir}`);
+      }
+    }
+
+    const packageRoot = fileURLToPath(new URL('../../../', import.meta.url));
+    const bundledDistPath = fileURLToPath(new URL('../../../dist', import.meta.url));
+    const runtimeDistPath = path.join(layout.runtimePath, 'dist');
+    await fs.rm(runtimeDistPath, { recursive: true, force: true });
+    await fs.cp(bundledDistPath, runtimeDistPath, { recursive: true });
+    details.push(`installed bundled runtime to ${runtimeDistPath}`);
+
+    const manifestRaw = await fs.readFile(path.join(packageRoot, 'package.json'), 'utf8');
+    const manifest = JSON.parse(manifestRaw) as { name?: string; version?: string };
+
+    await fs.writeFile(
+      path.join(layout.runtimePath, 'package.json'),
+      JSON.stringify(
+        {
+          name: manifest.name ?? 'forge-ai-assist',
+          version: manifest.version ?? '0.0.0',
+          type: 'module',
+          private: true,
+        },
+        null,
+        2,
+      ),
+      'utf8',
+    );
+
+    const wrapper = [
+      '#!/usr/bin/env node',
+      '',
+      "import '../dist/cli.js';",
+      '',
+    ].join('\n');
+    await fs.writeFile(layout.runtimeEntryPath, wrapper, 'utf8');
+    details.push(`wrote runtime entry ${layout.runtimeEntryPath}`);
+
+    await fs.writeFile(layout.versionPath, `${manifest.version ?? '0.0.0'}\n`, 'utf8');
+    details.push(`wrote VERSION (${manifest.version ?? '0.0.0'})`);
+
+    const existingMetadata = await readInstallerRuntimeMetadata(layout.metadataPath);
+    const bundledFiles = [
+      path.relative(layout.rootPath, runtimeDistPath),
+      path.relative(layout.rootPath, layout.runtimeEntryPath),
+      path.relative(layout.rootPath, layout.versionPath),
+      path.relative(layout.rootPath, path.join(layout.runtimePath, 'package.json')),
+    ];
+
+    await writeInstallerRuntimeMetadata(
+      layout.metadataPath,
+      createInstallerRuntimeMetadata({
+        installRoot: layout.rootPath,
+        runtimePath: layout.runtimePath,
+        runtimeEntryPath: layout.runtimeEntryPath,
+        agentsPath: layout.agentsPath,
+        summonables: entries.map((entry) => entry.id),
+        bundledFiles,
+      }),
+    );
+
+    if (existingMetadata === null) {
+      details.push(`wrote manifest ${layout.metadataPath}`);
+    } else {
+      details.push(`updated manifest ${layout.metadataPath}`);
+    }
+
+    details.push(`bundled tool entry: ${COPILOT_RUNTIME_ENTRY.replace('$HOME', os.homedir())}`);
+    return details;
   }
 }
 

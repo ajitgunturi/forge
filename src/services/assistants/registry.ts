@@ -1,4 +1,4 @@
-import { AssistantId, AssistantAvailability, AssistantOperationResult, AssistantCapability } from '../../contracts/assistants.js';
+import { AssistantId, AssistantAvailability, AssistantOperationResult, AssistantCapability, AssistantInstallLayout } from '../../contracts/assistants.js';
 import { SummonableEntry } from '../../contracts/summonable-entry.js';
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
@@ -21,6 +21,9 @@ export interface AssistantAdapter {
   
   /** Gets the target path for installing a summonable entry for this assistant */
   getInstallTarget(cwd: string, entry: SummonableEntry): string;
+
+  /** Resolves install directories and runtime locations for this assistant */
+  resolveInstallLayout(cwd: string): AssistantInstallLayout;
   
   /** Renders the assistant-agnostic entry into the native format for this assistant */
   render(entry: SummonableEntry): string;

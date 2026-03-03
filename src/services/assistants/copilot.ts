@@ -1,6 +1,7 @@
+import os from 'node:os';
 import path from 'node:path';
 import { AssistantAdapter } from './registry.js';
-import { AssistantId, AssistantAvailability } from '../../contracts/assistants.js';
+import { AssistantId, AssistantAvailability, AssistantInstallLayout } from '../../contracts/assistants.js';
 import { SummonableEntry } from '../../contracts/summonable-entry.js';
 import { entryRenderer } from './render-entry.js';
 import { AnalysisRun } from '../../contracts/analysis.js';
@@ -32,7 +33,21 @@ export class CopilotAdapter implements AssistantAdapter {
    * Gets the target path for installing a summonable entry for Copilot.
    */
   getInstallTarget(cwd: string, entry: SummonableEntry): string {
-    return path.join(cwd, '.copilot', 'agents', `${entry.id}.agent.md`);
+    return path.join(this.resolveInstallLayout(cwd).agentsPath, `${entry.id}.agent.md`);
+  }
+
+  resolveInstallLayout(_cwd: string): AssistantInstallLayout {
+    const rootPath = path.join(os.homedir(), '.copilot');
+    const runtimePath = path.join(rootPath, 'forge');
+
+    return {
+      rootPath,
+      agentsPath: path.join(rootPath, 'agents'),
+      runtimePath,
+      runtimeEntryPath: path.join(runtimePath, 'bin', 'forge.mjs'),
+      metadataPath: path.join(runtimePath, 'forge-file-manifest.json'),
+      versionPath: path.join(runtimePath, 'VERSION'),
+    };
   }
 
   /**
@@ -94,3 +109,5 @@ function sanitizePlainScalar(value: string): string {
     .replace(/^["']+|["']+$/g, '')
     .trim();
 }
+
+export const COPILOT_RUNTIME_ENTRY = 'node "$HOME/.copilot/forge/bin/forge.mjs"';

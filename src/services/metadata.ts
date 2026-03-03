@@ -6,6 +6,7 @@ import { z } from 'zod';
  * Sidecar metadata version.
  */
 export const METADATA_VERSION = '1.0';
+export const INSTALLER_METADATA_VERSION = '1.0';
 
 /**
  * Metadata schema using Zod for validation.
@@ -89,6 +90,19 @@ export const SidecarMetadataSchema = z.object({
  */
 export type SidecarMetadata = z.infer<typeof SidecarMetadataSchema>;
 
+export const InstallerRuntimeMetadataSchema = z.object({
+  version: z.string(),
+  installedAt: z.string().datetime(),
+  installRoot: z.string(),
+  runtimePath: z.string(),
+  runtimeEntryPath: z.string(),
+  agentsPath: z.string(),
+  summonables: z.array(z.string()).default([]),
+  bundledFiles: z.array(z.string()).default([]),
+});
+
+export type InstallerRuntimeMetadata = z.infer<typeof InstallerRuntimeMetadataSchema>;
+
 /**
  * Reads sidecar metadata from the specified path.
  * Returns null if the file does not exist.
@@ -141,5 +155,41 @@ export function createNewMetadata(): SidecarMetadata {
     createdAt: now,
     updatedAt: now,
     history: [],
+  };
+}
+
+export async function readInstallerRuntimeMetadata(metadataPath: string): Promise<InstallerRuntimeMetadata | null> {
+  try {
+    const content = await readFile(metadataPath, 'utf8');
+    return InstallerRuntimeMetadataSchema.parse(JSON.parse(content));
+  } catch (error: any) {
+    if (error.code === 'ENOENT') {
+      return null;
+    }
+
+    throw error;
+  }
+}
+
+export async function writeInstallerRuntimeMetadata(
+  metadataPath: string,
+  metadata: InstallerRuntimeMetadata,
+): Promise<void> {
+  InstallerRuntimeMetadataSchema.parse(metadata);
+  const dir = path.dirname(metadataPath);
+  await mkdir(dir, { recursive: true });
+
+  const tempPath = `${metadataPath}.${Math.random().toString(36).slice(2)}.tmp`;
+  const content = JSON.stringify(metadata, null, 2);
+
+  await writeFile(tempPath, content, 'utf8');
+  await rename(tempPath, metadataPath);
+}
+
+export function createInstallerRuntimeMetadata(input: Omit<InstallerRuntimeMetadata, 'version' | 'installedAt'>): InstallerRuntimeMetadata {
+  return {
+    version: INSTALLER_METADATA_VERSION,
+    installedAt: new Date().toISOString(),
+    ...input,
   };
 }
