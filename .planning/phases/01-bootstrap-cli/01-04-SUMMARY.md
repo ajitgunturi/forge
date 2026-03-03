@@ -1,3 +1,9 @@
+---
+phase: 01-bootstrap-cli
+plan: 04
+requirements-completed: []
+---
+
 # 01-04-SUMMARY.md
 
 ## Accomplishments
