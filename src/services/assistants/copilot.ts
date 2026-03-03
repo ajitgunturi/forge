@@ -39,7 +39,7 @@ export class CopilotAdapter implements AssistantAdapter {
    * Renders the assistant-agnostic entry into the native format for Copilot.
    */
   render(entry: SummonableEntry): string {
-    return entryRenderer.renderToMarkdown(entry);
+    return renderCopilotAgent(entry);
   }
 
   /**
@@ -63,3 +63,24 @@ export class CopilotAdapter implements AssistantAdapter {
 }
 
 export const copilotAdapter = new CopilotAdapter();
+
+function renderCopilotAgent(entry: SummonableEntry): string {
+  const description = sanitizeYamlString(entry.purpose);
+  const name = sanitizeYamlString(entry.id);
+  const body = entryRenderer.renderToMarkdown(entry);
+
+  return [
+    '---',
+    `name: ${name}`,
+    `description: ${description}`,
+    'tools: ["read", "search", "edit", "execute"]',
+    'target: github-copilot',
+    '---',
+    '',
+    body,
+  ].join('\n');
+}
+
+function sanitizeYamlString(value: string): string {
+  return JSON.stringify(value.trim());
+}
