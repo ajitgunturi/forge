@@ -45,9 +45,9 @@ export function analyzeDiscussionRequestIntent(
   const question = options.question.trim();
   const normalizedQuestion = question.toLowerCase();
   const scope = detectScope(normalizedQuestion);
-  const temporalField = detectTemporalField(normalizedQuestion);
 
   const extractedFilters = extractQuestionFilters(question, normalizedQuestion);
+  const temporalField = detectTemporalField(normalizedQuestion, extractedFilters);
   const chosenCategory = options.category ?? extractedFilters.category ?? getPreferredCategoryForQuestion(
     normalizedQuestion,
     options.preferredCategory,
@@ -57,6 +57,7 @@ export function analyzeDiscussionRequestIntent(
     after: options.after ?? extractedFilters.after,
     before: options.before ?? extractedFilters.before,
     category: chosenCategory,
+    dateField: temporalField,
     limit: options.limit,
   });
 
@@ -99,8 +100,23 @@ function detectScope(normalizedQuestion: string): 'discussions' | 'issues' {
   return 'discussions';
 }
 
-function detectTemporalField(normalizedQuestion: string): 'createdAt' | 'updatedAt' {
-  return /\b(created|opened|open)\b/.test(normalizedQuestion) ? 'createdAt' : 'updatedAt';
+function detectTemporalField(
+  normalizedQuestion: string,
+  extractedFilters: { when?: string; after?: string; before?: string; category?: string },
+): 'createdAt' | 'updatedAt' {
+  if (/\b(updated|activity|active|recent activity)\b/.test(normalizedQuestion)) {
+    return 'updatedAt';
+  }
+
+  if (/\b(created|opened|open)\b/.test(normalizedQuestion)) {
+    return 'createdAt';
+  }
+
+  if (extractedFilters.when || extractedFilters.after || extractedFilters.before) {
+    return 'createdAt';
+  }
+
+  return 'updatedAt';
 }
 
 function resolveRefreshReason(input: {

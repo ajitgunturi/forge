@@ -119,7 +119,14 @@ describe('Discussions services', () => {
     expect(filters.when).toBe('yesterday');
     expect(filters.after).toBeDefined();
     expect(filters.before).toBeDefined();
+    expect(filters.dateField).toBe('createdAt');
     expect(filters.limit).toBe(5);
+  });
+
+  it('defaults unbounded discussion fetches to updatedAt ordering', () => {
+    const filters = normalizeDiscussionFilters({ limit: 5 });
+
+    expect(filters.dateField).toBe('updatedAt');
   });
 
   it('fetches discussions from GitHub and applies category/date filters', async () => {
@@ -168,7 +175,7 @@ describe('Discussions services', () => {
                     number: 42,
                     title: 'Filterable fetch',
                     url: 'https://github.com/ajitgunturi/forge/discussions/42',
-                    createdAt: '2026-03-02T08:00:00.000Z',
+                    createdAt: '2026-03-03T08:00:00.000Z',
                     updatedAt: '2026-03-03T09:00:00.000Z',
                     answerChosenAt: null,
                     bodyText: 'Need filterable discussion fetches.',
@@ -215,6 +222,12 @@ describe('Discussions services', () => {
     expect(result.discussions).toHaveLength(1);
     expect(result.discussions[0]?.title).toBe('Filterable fetch');
     expect(result.discussions[0]?.comments[0]?.bodyText).toContain('@omnibase');
+    const secondRequestBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as {
+      variables: {
+        orderField: string;
+      };
+    };
+    expect(secondRequestBody.variables.orderField).toBe('CREATED_AT');
   });
 
   it('paginates across multiple GitHub discussion pages', async () => {
@@ -617,7 +630,19 @@ describe('Discussions services', () => {
     expect(intent.parsedFilters.after).toBe('2026-01-01T00:00:00.000Z');
     expect(intent.parsedFilters.before).toBe('2026-01-31T23:59:59.999Z');
     expect(intent.parsedFilters.category).toBe('customer support');
+    expect(intent.parsedFilters.dateField).toBe('createdAt');
     expect(intent.temporalField).toBe('createdAt');
+  });
+
+  it('parses update-oriented question windows against updatedAt', () => {
+    const intent = analyzeDiscussionRequestIntent({
+      question: 'count discussions updated in the last week',
+      limit: 25,
+    });
+
+    expect(intent.parsedFilters.when).toBe('last-week');
+    expect(intent.parsedFilters.dateField).toBe('updatedAt');
+    expect(intent.temporalField).toBe('updatedAt');
   });
 
   it('uses a saved preferred category for current-status prompts', () => {

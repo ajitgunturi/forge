@@ -6,6 +6,7 @@ export interface DiscussionFilterInput {
   after?: string;
   before?: string;
   category?: string;
+  dateField?: 'createdAt' | 'updatedAt';
   limit?: number;
   now?: Date;
 }
@@ -16,6 +17,7 @@ export function normalizeDiscussionFilters(input: DiscussionFilterInput = {}): D
   const now = input.now ?? new Date();
   const limit = normalizeLimit(input.limit);
   const filters: DiscussionFilters = {
+    dateField: input.dateField ?? inferDefaultDateField(input),
     limit,
   };
 
@@ -67,8 +69,8 @@ export function normalizeDiscussionFilters(input: DiscussionFilterInput = {}): D
   return filters;
 }
 
-export function matchesDiscussionWindow(updatedAt: string, filters: DiscussionFilters): boolean {
-  const timestamp = new Date(updatedAt).getTime();
+export function matchesDiscussionWindow(timestampValue: string, filters: DiscussionFilters): boolean {
+  const timestamp = new Date(timestampValue).getTime();
   if (Number.isNaN(timestamp)) {
     return false;
   }
@@ -98,8 +100,17 @@ export function describeDiscussionFilters(filters: DiscussionFilters): string {
   if (filters.category) {
     segments.push(`category=${filters.category}`);
   }
+  segments.push(`dateField=${filters.dateField}`);
   segments.push(`limit=${filters.limit}`);
   return segments.join(', ');
+}
+
+function inferDefaultDateField(input: DiscussionFilterInput): 'createdAt' | 'updatedAt' {
+  if (input.when || input.after || input.before) {
+    return 'createdAt';
+  }
+
+  return 'updatedAt';
 }
 
 function normalizeLimit(limit?: number): number {

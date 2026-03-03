@@ -14,7 +14,8 @@ const DISCUSSIONS_QUERY = `
     $name: String!,
     $first: Int!,
     $after: String,
-    $categoryId: ID
+    $categoryId: ID,
+    $orderField: DiscussionOrderField!
   ) {
     repository(owner: $owner, name: $name) {
       discussionCategories(first: 25) {
@@ -24,7 +25,7 @@ const DISCUSSIONS_QUERY = `
           slug
         }
       }
-      discussions(first: $first, after: $after, categoryId: $categoryId, orderBy: { field: UPDATED_AT, direction: DESC }) {
+      discussions(first: $first, after: $after, categoryId: $categoryId, orderBy: { field: $orderField, direction: DESC }) {
         pageInfo {
           hasNextPage
           endCursor
@@ -138,6 +139,7 @@ export async function fetchGitHubDiscussions(
       first: Math.min(GITHUB_DISCUSSIONS_PAGE_SIZE, remaining),
       after: afterCursor,
       categoryId: resolvedCategory?.id ?? null,
+      orderField: toGraphQLOrderField(options.filters.dateField),
     });
 
     const repository = response.repository;
@@ -163,7 +165,7 @@ export async function fetchGitHubDiscussions(
         comments: discussion.comments.nodes.map(normalizeCommentNode),
         upvoteCount: discussion.upvoteCount,
       }))
-      .filter((discussion) => matchesDiscussionWindow(discussion.updatedAt, options.filters));
+      .filter((discussion) => matchesDiscussionWindow(discussion[options.filters.dateField], options.filters));
 
     collected.push(...normalized);
 
@@ -171,7 +173,7 @@ export async function fetchGitHubDiscussions(
     afterCursor = repository.discussions.pageInfo.endCursor;
 
     if (options.filters.after) {
-      const oldestSeen = repository.discussions.nodes.at(-1)?.updatedAt;
+      const oldestSeen = repository.discussions.nodes.at(-1)?.[options.filters.dateField];
       if (oldestSeen && new Date(oldestSeen) < new Date(options.filters.after)) {
         break;
       }
@@ -214,9 +216,14 @@ async function fetchDiscussionCategories(
     first: 1,
     after: null,
     categoryId: null,
+    orderField: 'UPDATED_AT',
   });
 
   return response.repository?.discussionCategories.nodes ?? [];
+}
+
+function toGraphQLOrderField(dateField: DiscussionFilters['dateField']): 'CREATED_AT' | 'UPDATED_AT' {
+  return dateField === 'createdAt' ? 'CREATED_AT' : 'UPDATED_AT';
 }
 
 async function executeGitHubGraphQL<T>(token: string, variables: Record<string, unknown>): Promise<T> {

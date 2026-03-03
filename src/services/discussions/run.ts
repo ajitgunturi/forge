@@ -13,6 +13,7 @@ export interface RunDiscussionFetchOptions {
   after?: string;
   before?: string;
   category?: string;
+  dateField?: 'createdAt' | 'updatedAt';
   limit?: number;
 }
 
@@ -27,6 +28,7 @@ export async function runDiscussionFetch(options: RunDiscussionFetchOptions): Pr
     after: options.after,
     before: options.before,
     category: options.category,
+    dateField: options.dateField,
     limit: options.limit,
   });
 

@@ -240,6 +240,7 @@ async function refreshAndPrepareDigest(
     after: intent.parsedFilters.after,
     before: intent.parsedFilters.before,
     category: intent.parsedFilters.category,
+    dateField: intent.temporalField,
     limit: options.limit ?? DEFAULT_ANALYZER_REFRESH_LIMIT,
   });
 
@@ -295,6 +296,7 @@ async function persistAnalysisTrace(
         after: intent.parsedFilters.after,
         before: intent.parsedFilters.before,
         category: intent.parsedFilters.category,
+        dateField: intent.parsedFilters.dateField,
       },
     },
     answer,

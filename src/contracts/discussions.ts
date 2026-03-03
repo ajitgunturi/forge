@@ -16,6 +16,7 @@ export interface DiscussionFilters {
   before?: string;
   category?: string;
   resolvedCategory?: DiscussionCategory;
+  dateField: 'createdAt' | 'updatedAt';
   limit: number;
 }
 
@@ -129,13 +130,14 @@ export interface DiscussionAnalysisTrace {
     refreshUsed: boolean;
     refreshReason: string;
     source: 'explicit-refresh' | 'implicit-refresh' | 'cached-digest' | 'rebuild-latest-run';
-    parsedFilters: {
-      when?: string;
-      after?: string;
-      before?: string;
-      category?: string;
+      parsedFilters: {
+        when?: string;
+        after?: string;
+        before?: string;
+        category?: string;
+        dateField?: 'createdAt' | 'updatedAt';
+      };
     };
-  };
   answer: string;
   digest: PreparedDiscussionDigest;
 }
