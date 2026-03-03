@@ -123,6 +123,14 @@ describe('Discussions services', () => {
     expect(filters.limit).toBe(5);
   });
 
+  it('normalizes last 1 week to the last-week discussion window', () => {
+    const now = new Date('2026-03-03T12:00:00.000Z');
+    const filters = normalizeDiscussionFilters({ when: 'last 1 week', limit: 5, now });
+
+    expect(filters.when).toBe('last-week');
+    expect(filters.dateField).toBe('createdAt');
+  });
+
   it('defaults unbounded discussion fetches to updatedAt ordering', () => {
     const filters = normalizeDiscussionFilters({ limit: 5 });
 
@@ -439,7 +447,8 @@ describe('Discussions services', () => {
     expect(answer).toContain('Pattern Analysis');
     expect(answer).toContain('Patterns in support');
     expect(answer).toContain('## Ideas');
-    expect(answer).toContain('**Kinds:** feature-request: 1');
+    expect(answer).toContain('**Derived Themes:**');
+    expect(answer).not.toContain('**Kinds:**');
 
     const latestAnswerRaw = await readFile(
       join(tempDir, '.forge/discussions/analysis/latest-answer.json'),
@@ -669,6 +678,18 @@ describe('Discussions services', () => {
     expect(intent.answerShape.wantsCategoryHealth).toBe(true);
   });
 
+  it('treats "how is customer support doing in the last 1 week" as category health analysis', () => {
+    const intent = analyzeDiscussionRequestIntent({
+      question: 'how is customer support doing in the last 1 week',
+    });
+
+    expect(intent.parsedFilters.category).toBe('customer support');
+    expect(intent.parsedFilters.when).toBe('last-week');
+    expect(intent.parsedFilters.dateField).toBe('createdAt');
+    expect(intent.refreshMode).toBe('fetch');
+    expect(intent.answerShape.wantsCategoryHealth).toBe(true);
+  });
+
   it('persists the preferred discussion category', async () => {
     const context = deriveSidecarContext(tempDir);
     await writeMetadata(context.metadataPath, createNewMetadata());
@@ -880,5 +901,89 @@ describe('Discussions services', () => {
     expect(answer).toContain('Login outage');
     expect(answer).toContain('Provisioning stuck');
     expect(answer).toContain('## Major Themes');
+    expect(answer).not.toContain('**Kind:**');
+  });
+
+  it('does not keyword-trim an explicitly scoped category health result set', async () => {
+    const context = deriveSidecarContext(tempDir);
+    const run = {
+      version: '1.0' as const,
+      id: '2026-03-03T13-00-00-000Z',
+      timestamp: '2026-03-03T13:00:00.000Z',
+      repository: {
+        owner: 'ajitgunturi',
+        name: 'forge',
+        remoteUrl: 'https://github.com/ajitgunturi/forge.git',
+      },
+      filters: normalizeDiscussionFilters({ category: 'customer-support', when: 'last-week', limit: 100 }),
+      pageInfo: {
+        hasNextPage: false,
+        endCursor: null,
+        fetchedPages: 1,
+      },
+      discussionCount: 3,
+      discussions: [
+        {
+          id: 'D_601',
+          number: 601,
+          title: 'Login outage',
+          url: 'https://github.com/ajitgunturi/forge/discussions/601',
+          createdAt: '2026-03-01T08:00:00.000Z',
+          updatedAt: '2026-03-03T09:00:00.000Z',
+          answerChosenAt: null,
+          author: 'ajitg',
+          category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
+          bodyText: 'Customers report login failures.',
+          commentsCount: 2,
+          comments: [],
+          upvoteCount: 1,
+        },
+        {
+          id: 'D_602',
+          number: 602,
+          title: 'Billing question',
+          url: 'https://github.com/ajitgunturi/forge/discussions/602',
+          createdAt: '2026-03-01T10:00:00.000Z',
+          updatedAt: '2026-03-03T10:00:00.000Z',
+          answerChosenAt: null,
+          author: 'ajitg',
+          category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
+          bodyText: 'Customer asked about billing settings.',
+          commentsCount: 2,
+          comments: [],
+          upvoteCount: 1,
+        },
+        {
+          id: 'D_603',
+          number: 603,
+          title: 'Provisioning stuck',
+          url: 'https://github.com/ajitgunturi/forge/discussions/603',
+          createdAt: '2026-03-02T10:00:00.000Z',
+          updatedAt: '2026-03-03T11:00:00.000Z',
+          answerChosenAt: null,
+          author: 'ajitg',
+          category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
+          bodyText: 'Provisioning remains unresolved after retries.',
+          commentsCount: 1,
+          comments: [],
+          upvoteCount: 1,
+        },
+      ],
+    };
+
+    await writeMetadata(context.metadataPath, createNewMetadata());
+    await persistDiscussionRun(context, run);
+    await persistPreparedDiscussionDigest(tempDir, run);
+
+    const answer = await runDiscussionAnalyzer({
+      cwd: tempDir,
+      question: 'how is customer support doing in the last 1 week',
+      refreshAnalysis: true,
+    });
+
+    expect(answer).toContain('**Total Discussions:** 3');
+    expect(answer).toContain('Login outage');
+    expect(answer).toContain('Billing question');
+    expect(answer).toContain('Provisioning stuck');
   });
 });

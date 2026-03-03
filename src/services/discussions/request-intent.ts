@@ -161,6 +161,10 @@ function hasCurrentStatusIntent(normalizedQuestion: string): boolean {
     return true;
   }
 
+  if (/\bhow\s+(?:is|are)\s+.+\s+(?:doing|going|performing)\b/.test(normalizedQuestion)) {
+    return true;
+  }
+
   const currentnessWord = /\b(current|latest|fresh)\b/.test(normalizedQuestion);
   const statusWord = /\b(status|state|standing|situation|update|updates)\b/.test(normalizedQuestion);
   return currentnessWord && statusWord;
@@ -199,7 +203,9 @@ function extractQuestionFilters(
 function extractRelativeWindow(normalizedQuestion: string): string | undefined {
   if (/\btoday\b/.test(normalizedQuestion)) return 'today';
   if (/\byesterday\b/.test(normalizedQuestion)) return 'yesterday';
-  if (/\blast week\b|\blast-week\b|\blast_week\b/.test(normalizedQuestion)) return 'last-week';
+  if (/\b(?:last week|last-week|last_week|last 1 week|in the last week|in the last 1 week|past week|past 1 week|last 7 days|past 7 days)\b/.test(normalizedQuestion)) {
+    return 'last-week';
+  }
   return undefined;
 }
 
@@ -261,6 +267,11 @@ function extractCategory(question: string): string | undefined {
   const statusMatch = question.match(/\bhow\s+is\s+(.+?)\s+looking\b/i);
   if (isSpecificCategoryCandidate(statusMatch?.[1])) {
     return statusMatch[1].trim();
+  }
+
+  const doingMatch = question.match(/\bhow\s+(?:is|are)\s+(.+?)\s+(?:doing|going|performing)\b/i);
+  if (isSpecificCategoryCandidate(doingMatch?.[1])) {
+    return doingMatch[1].trim();
   }
 
   const lookingLikeMatch = question.match(/\bwhat(?:'s| is)\s+(.+?)\s+looking\s+like\b/i);

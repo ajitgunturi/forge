@@ -43,6 +43,13 @@ export function normalizeDiscussionFilters(input: DiscussionFilterInput = {}): D
       case 'last week':
       case 'last-week':
       case 'last_week':
+      case 'last 1 week':
+      case 'in the last week':
+      case 'in the last 1 week':
+      case 'past week':
+      case 'past 1 week':
+      case 'last 7 days':
+      case 'past 7 days':
         filters.when = 'last-week';
         filters.after = startOfDay(new Date(now.getTime() - (7 * DAY_IN_MS))).toISOString();
         filters.before = now.toISOString();

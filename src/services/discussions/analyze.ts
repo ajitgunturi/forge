@@ -100,12 +100,12 @@ function renderAnswer(digest: PreparedDiscussionDigest, intent: DiscussionAnalyz
   }
 
   lines.push('## Category Summary');
-  lines.push('| Category | Discussions | Status Breakdown | Kind Breakdown |');
-  lines.push('| :--- | ---: | :--- | :--- |');
+  lines.push('| Category | Discussions | Status Breakdown |');
+  lines.push('| :--- | ---: | :--- |');
 
   for (const [category, groupedRecords] of categoryGroups) {
     lines.push(
-      `| ${category} | ${groupedRecords.length} | ${formatCountMap(countBy(groupedRecords.map((record) => record.status)))} | ${formatCountMap(countBy(groupedRecords.map((record) => record.kind)))} |`,
+      `| ${category} | ${groupedRecords.length} | ${formatCountMap(countBy(groupedRecords.map((record) => record.status)))} |`,
     );
   }
   lines.push('');
@@ -120,13 +120,11 @@ function renderAnswer(digest: PreparedDiscussionDigest, intent: DiscussionAnalyz
     lines.push(`## ${category}`);
     lines.push(`**Discussions:** ${groupedRecords.length}  `);
     lines.push(`**Statuses:** ${formatCountMap(countBy(groupedRecords.map((record) => record.status)))}  `);
-    lines.push(`**Kinds:** ${formatCountMap(countBy(groupedRecords.map((record) => record.kind)))}  `);
     lines.push('');
 
     for (const record of groupedRecords) {
       lines.push(`### ${record.title} (#${record.number})`);
       lines.push(`- **Status:** ${record.status}`);
-      lines.push(`- **Kind:** ${record.kind}`);
       lines.push(`- **Issue:** ${record.issue}`);
       lines.push(`- **Key Context:** ${record.keyContext.join(' | ') || 'No additional context extracted.'}`);
       lines.push(`- **Resolution:** ${record.resolution}`);
@@ -137,12 +135,9 @@ function renderAnswer(digest: PreparedDiscussionDigest, intent: DiscussionAnalyz
 
   if (intent.answerShape.wantsPatterns) {
     lines.push('## Pattern Analysis', '');
-    lines.push('**Issue Distribution:**');
-    Object.entries(digest.totals.kinds)
-      .sort((left, right) => right[1] - left[1])
-      .forEach(([kind, count]) => {
-        lines.push(`- ${kind}: ${count}`);
-      });
+    lines.push('**Derived Themes:**');
+    renderThemeSummary(deriveThemeGroups(selectedRecords))
+      .forEach((line) => lines.push(line));
     lines.push('');
   }
 
@@ -174,7 +169,23 @@ function selectRelevantRecords(
       })
     : recordsInWindow;
 
+  if (!shouldUseKeywordFiltering(intent)) {
+    return recordsInCategory;
+  }
+
   return filterRelevantRecords(recordsInCategory, intent.normalizedQuestion);
+}
+
+function shouldUseKeywordFiltering(intent: DiscussionAnalyzerIntent): boolean {
+  if (intent.answerShape.wantsCategoryHealth || intent.answerShape.wantsCounts) {
+    return false;
+  }
+
+  if (intent.parsedFilters.category || intent.parsedFilters.when || intent.parsedFilters.after || intent.parsedFilters.before) {
+    return false;
+  }
+
+  return true;
 }
 
 function filterRelevantRecords(records: PreparedDiscussionDigest['records'], question: string) {
@@ -393,7 +404,7 @@ function renderCategoryHealthAnswer(
   const categoryLabel = records[0]?.category ?? intent.parsedFilters.category ?? 'Selected Category';
   const unresolvedOrBlocked = records.filter((record) => record.status === 'unresolved' || record.status === 'blocked');
   const statusCounts = countBy(records.map((record) => record.status));
-  const themeGroups = groupRecordsByKind(records);
+  const themeGroups = deriveThemeGroups(records);
 
   const lines: string[] = [
     `# GitHub Discussions Category Health: ${categoryLabel}`,
@@ -422,7 +433,6 @@ function renderCategoryHealthAnswer(
     for (const record of unresolvedOrBlocked) {
       lines.push(`### ${record.title} (#${record.number})`);
       lines.push(`- **Status:** ${record.status}`);
-      lines.push(`- **Kind:** ${record.kind}`);
       lines.push(`- **Issue:** ${record.issue}`);
       lines.push(`- **Resolution:** ${record.resolution}`);
       lines.push(`- **Action Items:** ${record.actionItems.join('; ')}`);
@@ -432,9 +442,9 @@ function renderCategoryHealthAnswer(
 
   if (records.length > 8) {
     lines.push('## Discussions By Theme', '');
-    for (const [kind, kindRecords] of themeGroups) {
-      lines.push(`### ${kind} (${kindRecords.length})`);
-      for (const record of kindRecords.slice(0, 5)) {
+    for (const [theme, themeRecords] of themeGroups) {
+      lines.push(`### ${theme} (${themeRecords.length})`);
+      for (const record of themeRecords.slice(0, 5)) {
         lines.push(`- #${record.number} ${record.title} [${record.status}]`);
       }
       lines.push('');
@@ -444,14 +454,17 @@ function renderCategoryHealthAnswer(
   return lines.join('\n').trim();
 }
 
-function groupRecordsByKind(
+function deriveThemeGroups(
   records: PreparedDiscussionDigest['records'],
 ): Map<string, PreparedDiscussionDigest['records']> {
   const grouped = new Map<string, PreparedDiscussionDigest['records']>();
+  const tokenFrequencies = countBy(records.flatMap((record) => extractThemeTokens(record)));
+
   for (const record of records) {
-    const existing = grouped.get(record.kind) ?? [];
+    const theme = inferThemeLabel(record, tokenFrequencies);
+    const existing = grouped.get(theme) ?? [];
     existing.push(record);
-    grouped.set(record.kind, existing);
+    grouped.set(theme, existing);
   }
   return new Map([...grouped.entries()].sort((left, right) => right[1].length - left[1].length));
 }
@@ -465,6 +478,71 @@ function renderThemeSummary(
     lines.push(`- ${kind}: ${kindRecords.length} discussion(s)${sampleTitles ? ` — ${sampleTitles}` : ''}`);
   }
   return lines;
+}
+
+function inferThemeLabel(
+  record: PreparedDiscussionDigest['records'][number],
+  tokenFrequencies: Record<string, number>,
+): string {
+  const tokens = extractThemeTokens(record);
+  const rankedToken = [...new Set(tokens)]
+    .sort((left, right) => {
+      return (tokenFrequencies[right] ?? 0) - (tokenFrequencies[left] ?? 0) || left.localeCompare(right);
+    })[0];
+
+  if (rankedToken) {
+    return toTitleCase(rankedToken);
+  }
+
+  const fallback = record.title.trim();
+  return fallback.length > 0 ? fallback : 'General';
+}
+
+function extractThemeTokens(record: PreparedDiscussionDigest['records'][number]): string[] {
+  const rawTokens = `${record.title} ${record.issue}`
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((token) => token.length >= 4);
+
+  return rawTokens.filter((token) => !THEME_STOP_WORDS.has(token));
+}
+
+const THEME_STOP_WORDS = new Set([
+  'about',
+  'after',
+  'because',
+  'been',
+  'between',
+  'customer',
+  'customers',
+  'discussion',
+  'discussions',
+  'doing',
+  'from',
+  'have',
+  'into',
+  'issue',
+  'last',
+  'looking',
+  'question',
+  'questions',
+  'reported',
+  'support',
+  'their',
+  'there',
+  'these',
+  'this',
+  'those',
+  'week',
+  'with',
+]);
+
+function toTitleCase(value: string): string {
+  if (!value) {
+    return value;
+  }
+
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
 function groupRecordsByCategory(
