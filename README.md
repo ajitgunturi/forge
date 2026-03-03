@@ -22,6 +22,14 @@ In Copilot:
 2. Select `forge-discussion-analyzer`
 3. Ask a question about GitHub Discussions
 
+## Custom Instructions
+
+Forge installs `forge-discussion-analyzer.agent.md` with a preserved user-customizations block.
+
+- Add your own Copilot instructions inside the `BEGIN USER CUSTOMIZATIONS` / `END USER CUSTOMIZATIONS` section.
+- Leave the Forge-managed section unchanged.
+- Upgrades replace only the Forge-managed block, so your custom instructions stay intact across reinstalls and updates.
+
 ## Notes
 
 - This discussion-analyzer works with GitHub Discussions only, not GitHub Issues.

@@ -29,6 +29,7 @@ Expected result:
 - `~/.copilot/agents/forge-discussion-analyzer.agent.md` exists
 - `~/.copilot/forge/node_modules` exists
 - no manual `npm install` is needed inside `~/.copilot/forge`
+- users can add their own instructions inside the preserved user-customizations block of `forge-discussion-analyzer.agent.md` without losing them on upgrade
 
 ## Optional split flow
 
