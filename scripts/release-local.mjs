@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 function parseArgs(argv) {
   const args = {
@@ -10,10 +12,21 @@ function parseArgs(argv) {
     otp: undefined,
     allowDirty: false,
     keepTarball: false,
+    version: undefined,
+    skipVersionBump: false,
+    login: "auto",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
+
+    if (!value.startsWith("-")) {
+      if (args.version) {
+        throw new Error(`Unexpected extra argument: ${value}`);
+      }
+      args.version = normalizeVersion(value);
+      continue;
+    }
 
     if (value === "--publish") {
       args.publish = true;
@@ -30,6 +43,17 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (value === "--skip-version-bump") {
+      args.skipVersionBump = true;
+      continue;
+    }
+
+    if (value === "--version") {
+      args.version = normalizeVersion(argv[index + 1]);
+      index += 1;
+      continue;
+    }
+
     if (value === "--tag") {
       args.tag = argv[index + 1];
       index += 1;
@@ -38,6 +62,12 @@ function parseArgs(argv) {
 
     if (value === "--otp") {
       args.otp = argv[index + 1];
+      index += 1;
+      continue;
+    }
+
+    if (value === "--login") {
+      args.login = argv[index + 1] ?? "auto";
       index += 1;
       continue;
     }
@@ -53,13 +83,31 @@ function parseArgs(argv) {
   return args;
 }
 
+function normalizeVersion(value) {
+  if (!value) {
+    throw new Error("Missing version value.");
+  }
+
+  const normalized = value.startsWith("v") ? value.slice(1) : value;
+  if (!/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(normalized)) {
+    throw new Error(`Invalid version: ${value}`);
+  }
+
+  return normalized;
+}
+
 function printHelp() {
   console.log(`Usage: npm run release:local -- [options]
 
 Options:
+  <version>       Set package.json to this semver before releasing (accepts v1.2.3)
   --publish       Publish the packed tarball to npm after validation
   --tag <name>    Publish under a dist-tag such as latest or next
   --otp <code>    Pass a one-time password to npm publish
+  --version <v>   Explicit version override, same as the positional version
+  --skip-version-bump
+                  Do not change package.json before releasing
+  --login <mode>  npm auth mode: auto, always, or never
   --allow-dirty   Skip the clean git worktree check
   --keep-tarball  Keep the generated .tgz artifact after the script exits
   -h, --help      Show this help message
@@ -70,6 +118,7 @@ function run(command, args, options = {}) {
   const display = [command, ...args].join(" ");
   console.log(`\n$ ${display}`);
   return execFileSync(command, args, {
+    env: options.env ?? process.env,
     stdio: options.capture ? ["ignore", "pipe", "pipe"] : "inherit",
     encoding: options.capture ? "utf8" : undefined,
   });
@@ -94,6 +143,68 @@ function ensureNpmAuth() {
   }
 }
 
+function hasNpmToken() {
+  return typeof process.env.NPM_TOKEN === "string" && process.env.NPM_TOKEN.trim().length > 0;
+}
+
+function createTokenAuthEnv() {
+  const directory = mkdtempSync(join(tmpdir(), "forge-npmrc-"));
+  const userConfigPath = join(directory, ".npmrc");
+  const registry = process.env.NPM_REGISTRY_URL?.trim() || "https://registry.npmjs.org/";
+  const registryHost = registry.replace(/^https?:/, "");
+  const token = process.env.NPM_TOKEN?.trim();
+
+  if (!token) {
+    throw new Error("Missing NPM_TOKEN.");
+  }
+
+  writeFileSync(
+    userConfigPath,
+    `registry=${registry}\n${registryHost}:_authToken=${token}\nalways-auth=true\n`,
+    "utf8",
+  );
+
+  return {
+    env: {
+      ...process.env,
+      NPM_CONFIG_USERCONFIG: userConfigPath,
+    },
+    cleanup() {
+      rmSync(directory, { recursive: true, force: true });
+    },
+  };
+}
+
+function ensureNpmAuthWithLogin(args) {
+  if (hasNpmToken()) {
+    console.log("Using npm authentication from NPM_TOKEN.");
+    return null;
+  }
+
+  try {
+    if (args.login === "always") {
+      run("npm", ["login"]);
+    }
+
+    ensureNpmAuth();
+    return null;
+  } catch (error) {
+    if (args.login === "never") {
+      throw error;
+    }
+
+    console.log("npm auth missing. Starting `npm login`.");
+    run("npm", ["login"]);
+    ensureNpmAuth();
+    return null;
+  }
+}
+
+function setReleaseVersion(version) {
+  run("npm", ["version", version, "--no-git-tag-version"]);
+  console.log(`Release version set to ${version}`);
+}
+
 function packArtifact() {
   const output = run("npm", ["pack", "--json"], { capture: true }).trim();
   const parsed = JSON.parse(output);
@@ -107,7 +218,7 @@ function packArtifact() {
   return artifact.filename;
 }
 
-function publishArtifact(filename, args) {
+function publishArtifact(filename, args, env) {
   const publishArgs = ["publish", filename, "--access", "public"];
 
   if (args.tag) {
@@ -118,7 +229,7 @@ function publishArtifact(filename, args) {
     publishArgs.push("--otp", args.otp);
   }
 
-  run("npm", publishArgs);
+  run("npm", publishArgs, { env });
 }
 
 function printNextSteps(args, filename) {
@@ -132,7 +243,7 @@ function printNextSteps(args, filename) {
   }
 
   console.log("Dry run only. To publish the verified tarball, rerun:");
-  console.log(`npm run release:local -- --publish${args.tag ? ` --tag ${args.tag}` : ""}`);
+  console.log(`npm run release:local --${args.version ? ` ${args.version}` : ""} --publish${args.tag ? ` --tag ${args.tag}` : ""}`);
 }
 
 async function main() {
@@ -142,21 +253,31 @@ async function main() {
     ensureCleanWorktree();
   }
 
-  ensureNpmAuth();
-  run("npm", ["run", "build"]);
-  run("npm", ["test"]);
+  if (!args.skipVersionBump && args.version) {
+    setReleaseVersion(args.version);
+  }
 
-  let tarball;
+  const tokenAuth = hasNpmToken() ? createTokenAuthEnv() : null;
+
   try {
-    tarball = packArtifact();
-    if (args.publish) {
-      publishArtifact(tarball, args);
+    ensureNpmAuthWithLogin(args);
+    run("npm", ["run", "build"]);
+    run("npm", ["test"]);
+
+    let tarball;
+    try {
+      tarball = packArtifact();
+      if (args.publish) {
+        publishArtifact(tarball, args, tokenAuth?.env);
+      }
+      printNextSteps(args, tarball);
+    } finally {
+      if (tarball && !args.keepTarball) {
+        rmSync(tarball, { force: true });
+      }
     }
-    printNextSteps(args, tarball);
   } finally {
-    if (tarball && !args.keepTarball) {
-      rmSync(tarball, { force: true });
-    }
+    tokenAuth?.cleanup();
   }
 }
 

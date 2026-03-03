@@ -5,44 +5,57 @@ Forge releases currently run from the maintainer's local machine. There is no Gi
 ## Prerequisites
 
 - Node 22 or newer
-- npm authentication configured locally via `npm login`
+- `NPM_TOKEN` exported for non-interactive release, or local npm authentication available via `npm login`
 - A clean git worktree, unless you intentionally override the check
 - Release-ready package version already set in `package.json`
 
 ## Recommended Release Sequence
 
-1. Update the package version:
+One-command release:
 
 ```bash
-npm version patch
+make release v1.0.0
 ```
 
-2. Run the local release validation flow:
+This flow will:
+
+- normalize the version (`v1.0.0` becomes `1.0.0`)
+- update `package.json`
+- verify git status
+- prefer `NPM_TOKEN` for npm authentication
+- start `npm login` automatically only when `NPM_TOKEN` is missing and npm auth is not already configured
+- run build, test, and pack checks
+- publish the verified tarball to npm
+
+Dry-run release validation:
 
 ```bash
-npm run release:local
+make release-check v1.0.0
 ```
 
-This command checks:
-
-- git worktree cleanliness
-- local npm authentication
-- `npm run build`
-- `npm test`
-- `npm pack --json`
-
-3. Publish the verified tarball:
+Equivalent direct command:
 
 ```bash
-npm run release:local -- --publish
+npm run release:local -- v1.0.0 --publish
 ```
 
-Optional flags:
+Recommended non-interactive setup:
 
-- `--tag next` to publish under a non-`latest` dist-tag
+```bash
+export NPM_TOKEN=your_npm_token_here
+make release v1.0.0
+```
+
+## Optional Flags
+
+- `make release v1.0.0 next --tag next` is not supported; use the direct npm command when you need extra flags
+- `npm run release:local -- v1.0.0 --publish --tag next` publishes under a non-`latest` dist-tag
 - `--otp 123456` if your npm account requires one-time passwords
+- `--login never` disables automatic `npm login`
+- `--login always` forces a fresh `npm login` before validation
 - `--allow-dirty` only if you intentionally want to bypass the clean-worktree check
 - `--keep-tarball` to retain the packed `.tgz` artifact after the command exits
+- `--skip-version-bump` keeps the current `package.json` version unchanged
 
 ## After Publish
 
@@ -58,6 +71,6 @@ npx forge-ai-assist@latest --version
 
 ## Failure Handling
 
-- If `npm whoami` fails, run `npm login` and retry
+- If `NPM_TOKEN` is unset and `npm whoami` fails, the release script will try `npm login` unless you passed `--login never`
 - If tests fail, do not publish; fix the issue and rerun the release command
 - If publish succeeds but local cleanup fails, the release is already live; remove the tarball manually and proceed with tag/release-note cleanup
