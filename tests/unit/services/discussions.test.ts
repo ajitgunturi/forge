@@ -9,6 +9,8 @@ import { loadLatestDiscussionRun, persistDiscussionRun } from '../../../src/serv
 import { runDiscussionAnalyzer } from '../../../src/services/discussions/analyze.js';
 import { resolveGitHubToken } from '../../../src/services/discussions/auth.js';
 import { fetchGitHubDiscussions } from '../../../src/services/discussions/fetch.js';
+import { analyzeDiscussionRequestIntent } from '../../../src/services/discussions/request-intent.js';
+import * as discussionRunService from '../../../src/services/discussions/run.js';
 import {
   describeDiscussionFilters,
   normalizeDiscussionFilters,
@@ -338,6 +340,7 @@ describe('Discussions services', () => {
     expect(digest.records[0]?.status).toBe('resolved');
     expect(digest.records[0]?.issue).toContain('Install fails');
     expect(digest.records[0]?.createdAt).toBe('2026-03-03T08:00:00.000Z');
+    expect(digest.records[0]?.categorySlug).toBe('q-a');
   });
 
   it('runs forge-discussion-analyzer from prepared sidecar artifacts', async () => {
@@ -387,6 +390,8 @@ describe('Discussions services', () => {
 
     expect(answer).toContain('Pattern Analysis');
     expect(answer).toContain('Patterns in support');
+    expect(answer).toContain('## Ideas');
+    expect(answer).toContain('**Kinds:** feature-request: 1');
 
     const latestAnswerRaw = await readFile(
       join(tempDir, '.forge/discussions/analysis/latest-answer.json'),
@@ -396,11 +401,18 @@ describe('Discussions services', () => {
       question: string;
       answer: string;
       digestId: string;
+      decision: {
+        refreshUsed: boolean;
+        refreshReason: string;
+        source: string;
+      };
     };
 
     expect(latestAnswer.question).toBe('What recurring patterns are visible in support discussions?');
     expect(latestAnswer.answer).toContain('Pattern Analysis');
     expect(latestAnswer.digestId).toBe('2026-03-03T10-00-00-000Z-analysis');
+    expect(latestAnswer.decision.refreshUsed).toBe(false);
+    expect(latestAnswer.decision.source).toBe('cached-digest');
 
     const latestAnswerMarkdown = await readFile(
       join(tempDir, '.forge/discussions/analysis/latest-answer.md'),
@@ -409,9 +421,9 @@ describe('Discussions services', () => {
     expect(latestAnswerMarkdown).toContain('GitHub Discussions Digest');
   });
 
-  it('reports count-style questions against refreshed discussion data', async () => {
+  it('reports count-style questions against implicitly refreshed discussion data', async () => {
     const context = deriveSidecarContext(tempDir);
-    const run = {
+    const staleRun = {
       version: '1.0' as const,
       id: '2026-03-03T10-00-00-000Z',
       timestamp: '2026-03-03T10:00:00.000Z',
@@ -458,19 +470,34 @@ describe('Discussions services', () => {
         },
       ],
     };
+    const freshRun = {
+      ...staleRun,
+      id: '2026-03-03T11-00-00-000Z',
+      timestamp: '2026-03-03T11:00:00.000Z',
+    };
 
     await writeMetadata(context.metadataPath, createNewMetadata());
-    await persistDiscussionRun(context, run);
-    await persistPreparedDiscussionDigest(tempDir, run);
+    await persistDiscussionRun(context, staleRun);
+    await persistPreparedDiscussionDigest(tempDir, staleRun);
 
-    const answer = await runDiscussionAnalyzer({
-      cwd: tempDir,
-      question: 'count discussions created since 2026-01-01',
+    const fetchSpy = vi.spyOn(discussionRunService, 'runDiscussionFetch').mockImplementation(async () => {
+      await persistDiscussionRun(context, freshRun);
+      return freshRun;
     });
 
-    expect(answer).toContain('## Count Summary');
-    expect(answer).toContain('**Counted Discussions:** 1');
-    expect(answer).toContain('createdAt filtered by since 2026-01-01');
+    try {
+      const answer = await runDiscussionAnalyzer({
+        cwd: tempDir,
+        question: 'count discussions created since 2026-01-01',
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(answer).toContain('## Count Summary');
+      expect(answer).toContain('**Counted Discussions:** 1');
+      expect(answer).toContain('createdAt filtered by after 2026-01-01T00:00:00.000Z');
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('fails fast when the question asks for issues instead of discussions', async () => {
@@ -518,13 +545,136 @@ describe('Discussions services', () => {
         cwd: tempDir,
         question: 'show me issues created in the last week',
       }),
-    ).rejects.toThrow(/works with GitHub Discussions only/);
+    ).rejects.toThrow(/Forge analyzes GitHub Discussions only/);
 
     await expect(
       runDiscussionAnalyzer({
         cwd: tempDir,
         question: 'show me issues created in the last week',
       }),
-    ).rejects.toThrow(/Did you mean: "show me discussions created in the last week"/);
+    ).rejects.toThrow(/Want "show me discussions created in the last week" instead/);
+  });
+
+  it('parses current-status and summary intents differently', () => {
+    const currentIntent = analyzeDiscussionRequestIntent({
+      question: 'what is the current status of customer support discussions?',
+    });
+    const summaryIntent = analyzeDiscussionRequestIntent({
+      question: 'give me a summary of customer support discussions',
+    });
+
+    expect(currentIntent.refreshMode).toBe('fetch');
+    expect(currentIntent.refreshReason).toBe('current-status-question');
+    expect(summaryIntent.refreshMode).toBe('cached');
+    expect(summaryIntent.refreshReason).toBe('cached-local-question');
+  });
+
+  it('parses explicit question windows into normalized filters', () => {
+    const intent = analyzeDiscussionRequestIntent({
+      question: 'count discussions created between 2026-01-01 and 2026-01-31 in the customer support category',
+      limit: 25,
+    });
+
+    expect(intent.refreshMode).toBe('fetch');
+    expect(intent.parsedFilters.after).toBe('2026-01-01T00:00:00.000Z');
+    expect(intent.parsedFilters.before).toBe('2026-01-31T23:59:59.999Z');
+    expect(intent.parsedFilters.category).toBe('customer support');
+    expect(intent.temporalField).toBe('createdAt');
+  });
+
+  it('refreshes automatically for current-status questions and records trace metadata', async () => {
+    const context = deriveSidecarContext(tempDir);
+    const staleRun = {
+      version: '1.0' as const,
+      id: '2026-03-02T10-00-00-000Z',
+      timestamp: '2026-03-02T10:00:00.000Z',
+      repository: {
+        owner: 'ajitgunturi',
+        name: 'forge',
+        remoteUrl: 'https://github.com/ajitgunturi/forge.git',
+      },
+      filters: normalizeDiscussionFilters({ limit: 50 }),
+      pageInfo: {
+        hasNextPage: false,
+        endCursor: null,
+        fetchedPages: 1,
+      },
+      discussionCount: 1,
+      discussions: [
+        {
+          id: 'D_stale',
+          number: 401,
+          title: 'Old support thread',
+          url: 'https://github.com/ajitgunturi/forge/discussions/401',
+          createdAt: '2026-03-01T08:00:00.000Z',
+          updatedAt: '2026-03-02T09:00:00.000Z',
+          answerChosenAt: null,
+          author: 'ajitg',
+          category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
+          bodyText: 'Stale snapshot.',
+          commentsCount: 2,
+          upvoteCount: 1,
+        },
+      ],
+    };
+    const freshRun = {
+      ...staleRun,
+      id: '2026-03-03T10-00-00-000Z',
+      timestamp: '2026-03-03T10:00:00.000Z',
+      discussions: [
+        {
+          id: 'D_fresh',
+          number: 402,
+          title: 'Current support thread',
+          url: 'https://github.com/ajitgunturi/forge/discussions/402',
+          createdAt: '2026-03-03T08:00:00.000Z',
+          updatedAt: '2026-03-03T09:00:00.000Z',
+          answerChosenAt: null,
+          author: 'ajitg',
+          category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
+          bodyText: 'Fresh snapshot.',
+          commentsCount: 2,
+          upvoteCount: 1,
+        },
+      ],
+    };
+
+    await writeMetadata(context.metadataPath, createNewMetadata());
+    await persistDiscussionRun(context, staleRun);
+    await persistPreparedDiscussionDigest(tempDir, staleRun);
+
+    const fetchSpy = vi.spyOn(discussionRunService, 'runDiscussionFetch').mockImplementation(async () => {
+      await persistDiscussionRun(context, freshRun);
+      return freshRun;
+    });
+
+    try {
+      const answer = await runDiscussionAnalyzer({
+        cwd: tempDir,
+        question: 'what is the current status of customer support discussions?',
+      });
+
+      expect(answer).toContain('Current support thread');
+      expect(answer).toContain('## Customer Support');
+
+      const latestAnswerRaw = await readFile(
+        join(tempDir, '.forge/discussions/analysis/latest-answer.json'),
+        'utf8',
+      );
+      const latestAnswer = JSON.parse(latestAnswerRaw) as {
+        decision: {
+          refreshUsed: boolean;
+          refreshReason: string;
+          source: string;
+        };
+      };
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(latestAnswer.decision.refreshUsed).toBe(true);
+      expect(latestAnswer.decision.refreshReason).toBe('current-status-question');
+      expect(latestAnswer.decision.source).toBe('implicit-refresh');
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 });

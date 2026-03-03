@@ -78,7 +78,8 @@ export async function createProgram(): Promise<Command> {
       const answer = await runDiscussionAnalyzer({
         cwd: options.cwd,
         question: options.question ?? '',
-        refresh: options.refreshAnalysis || options.forceRefresh,
+        forceRefresh: options.forceRefresh,
+        refreshAnalysis: options.refreshAnalysis,
         token: options.githubToken,
         when: options.when,
         after: options.after,

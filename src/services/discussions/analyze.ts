@@ -2,14 +2,16 @@ import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { PreparedDiscussionDigest, DiscussionAnalysisTrace } from '../../contracts/discussions.js';
 import { DiscussionArtifactsRequiredError, DiscussionsOnlyAnalyzerError } from '../../lib/errors.js';
-import { loadLatestPreparedDiscussionDigest, prepareLatestDiscussionDigest } from './prepare.js';
 import { deriveSidecarContext } from '../sidecar.js';
+import { loadLatestPreparedDiscussionDigest, prepareLatestDiscussionDigest } from './prepare.js';
+import { analyzeDiscussionRequestIntent, DiscussionAnalyzerIntent } from './request-intent.js';
 import { runDiscussionFetch } from './run.js';
 
 export interface RunDiscussionAnalyzerOptions {
   cwd: string;
   question: string;
-  refresh?: boolean;
+  forceRefresh?: boolean;
+  refreshAnalysis?: boolean;
   token?: string;
   when?: string;
   after?: string;
@@ -21,13 +23,40 @@ export interface RunDiscussionAnalyzerOptions {
 const DEFAULT_ANALYZER_REFRESH_LIMIT = 1000;
 
 export async function runDiscussionAnalyzer(options: RunDiscussionAnalyzerOptions): Promise<string> {
-  const digest = options.refresh
-    ? await refreshAndPrepareDigest(options)
-    : (await loadOrPrepareDigest(options.cwd));
+  const intent = analyzeDiscussionRequestIntent({
+    question: options.question,
+    forceRefresh: options.forceRefresh,
+    refreshAnalysis: options.refreshAnalysis,
+    when: options.when,
+    after: options.after,
+    before: options.before,
+    category: options.category,
+    limit: options.limit,
+  });
 
-  const answer = renderAnswer(digest, options.question);
-  await persistAnalysisTrace(options.cwd, digest, options.question, answer);
+  if (!intent.normalizedQuestion) {
+    throw new DiscussionArtifactsRequiredError('A question is required when running forge-discussion-analyzer.');
+  }
+  assertDiscussionScopedQuestion(intent);
+
+  const digest = await loadDigestForIntent(options, intent);
+  const answer = renderAnswer(digest, intent);
+  await persistAnalysisTrace(options.cwd, digest, intent, answer);
   return answer;
+}
+
+async function loadDigestForIntent(
+  options: RunDiscussionAnalyzerOptions,
+  intent: DiscussionAnalyzerIntent,
+): Promise<PreparedDiscussionDigest> {
+  switch (intent.refreshMode) {
+    case 'fetch':
+      return refreshAndPrepareDigest(options, intent);
+    case 'rebuild':
+      return prepareLatestDiscussionDigest(options.cwd);
+    default:
+      return loadOrPrepareDigest(options.cwd);
+  }
 }
 
 async function loadOrPrepareDigest(cwd: string): Promise<PreparedDiscussionDigest> {
@@ -39,25 +68,19 @@ async function loadOrPrepareDigest(cwd: string): Promise<PreparedDiscussionDiges
   return prepareLatestDiscussionDigest(cwd);
 }
 
-function renderAnswer(digest: PreparedDiscussionDigest, question: string): string {
-  const normalizedQuestion = question.trim().toLowerCase();
-  if (!normalizedQuestion) {
-    throw new DiscussionArtifactsRequiredError('A question is required when running forge-discussion-analyzer.');
-  }
-  assertDiscussionScopedQuestion(question, normalizedQuestion);
-
-  const countSummary = deriveCountSummary(digest, question, normalizedQuestion);
-  const includePatterns = shouldIncludePatternSection(normalizedQuestion);
-  const includeEffectiveness = shouldIncludeEffectivenessSection(normalizedQuestion);
-  const records = (countSummary?.records ?? filterRelevantRecords(digest, normalizedQuestion)).slice(0, 8);
+function renderAnswer(digest: PreparedDiscussionDigest, intent: DiscussionAnalyzerIntent): string {
+  const records = selectRelevantRecords(digest, intent).slice(0, 12);
+  const countSummary = deriveCountSummary(records, intent);
+  const categoryGroups = groupRecordsByCategory(countSummary?.records ?? records);
 
   const lines: string[] = [
     `# GitHub Discussions Digest: ${digest.repository.owner}/${digest.repository.name}`,
     '',
-    `**Question:** ${question}  `,
+    `**Question:** ${intent.question}  `,
     `**Source Run:** \`${digest.sourceRunId}\`  `,
     `**Data Prepared:** ${digest.timestamp}  `,
     `**Total Discussions:** ${digest.totals.discussions}  `,
+    `**Answer Source:** ${describeAnswerSource(intent)}  `,
     '',
   ];
 
@@ -68,43 +91,54 @@ function renderAnswer(digest: PreparedDiscussionDigest, question: string): strin
     lines.push('');
   }
 
-  lines.push(
-    '## Summary Overview',
-    '| Discussion | Category | Status | Key Takeaway |',
-    '| :--- | :--- | :--- | :--- |',
-  );
+  lines.push('## Category Summary');
+  lines.push('| Category | Discussions | Status Breakdown | Kind Breakdown |');
+  lines.push('| :--- | ---: | :--- | :--- |');
 
-  for (const record of records) {
+  for (const [category, groupedRecords] of categoryGroups) {
     lines.push(
-      `| [#${record.number} ${record.title}] | ${record.kind} | ${record.status} | ${record.resolution} |`
+      `| ${category} | ${groupedRecords.length} | ${formatCountMap(countBy(groupedRecords.map((record) => record.status)))} | ${formatCountMap(countBy(groupedRecords.map((record) => record.kind)))} |`,
     );
   }
+  lines.push('');
 
-  lines.push('', '## Detailed Summaries', '');
-
-  for (const record of records) {
-    lines.push(`#### ${record.title} (#${record.number})`);
-    lines.push(`* **Status:** ${record.status}`);
-    lines.push(`* **Category:** ${record.kind}`);
-    lines.push(`* **The Issue:** ${record.issue}`);
-    lines.push(`* **Key Context:** ${record.keyContext.join(' | ') || 'No additional context extracted.'}`);
-    lines.push(`* **The Resolution:** ${record.resolution}`);
-    lines.push(`* **Action Items:** ${record.actionItems.join('; ')}`);
+  if (categoryGroups.size === 0) {
+    lines.push('## Matching Discussions');
+    lines.push('No discussions matched the requested scope in the prepared digest.');
     lines.push('');
   }
 
-  if (includePatterns) {
+  for (const [category, groupedRecords] of categoryGroups) {
+    lines.push(`## ${category}`);
+    lines.push(`**Discussions:** ${groupedRecords.length}  `);
+    lines.push(`**Statuses:** ${formatCountMap(countBy(groupedRecords.map((record) => record.status)))}  `);
+    lines.push(`**Kinds:** ${formatCountMap(countBy(groupedRecords.map((record) => record.kind)))}  `);
+    lines.push('');
+
+    for (const record of groupedRecords) {
+      lines.push(`### ${record.title} (#${record.number})`);
+      lines.push(`- **Status:** ${record.status}`);
+      lines.push(`- **Kind:** ${record.kind}`);
+      lines.push(`- **Issue:** ${record.issue}`);
+      lines.push(`- **Key Context:** ${record.keyContext.join(' | ') || 'No additional context extracted.'}`);
+      lines.push(`- **Resolution:** ${record.resolution}`);
+      lines.push(`- **Action Items:** ${record.actionItems.join('; ')}`);
+      lines.push('');
+    }
+  }
+
+  if (intent.answerShape.wantsPatterns) {
     lines.push('## Pattern Analysis', '');
     lines.push('**Issue Distribution:**');
     Object.entries(digest.totals.kinds)
-      .sort((a, b) => b[1] - a[1])
+      .sort((left, right) => right[1] - left[1])
       .forEach(([kind, count]) => {
         lines.push(`- ${kind}: ${count}`);
       });
     lines.push('');
   }
 
-  if (includeEffectiveness) {
+  if (intent.answerShape.wantsEffectiveness) {
     lines.push('## Support Effectiveness Analysis', '');
     lines.push('#### Strengths ✅');
     lines.push(`- ${digest.totals.statuses.resolved ?? 0} discussions show a resolved outcome.`);
@@ -117,67 +151,87 @@ function renderAnswer(digest: PreparedDiscussionDigest, question: string): strin
   return lines.join('\n').trim();
 }
 
-function filterRelevantRecords(digest: PreparedDiscussionDigest, question: string) {
+function selectRelevantRecords(
+  digest: PreparedDiscussionDigest,
+  intent: DiscussionAnalyzerIntent,
+): PreparedDiscussionDigest['records'] {
+  const recordsInWindow = digest.records.filter((record) => matchesIntentWindow(record, intent));
+  const recordsInCategory = intent.parsedFilters.category
+    ? recordsInWindow.filter((record) => {
+        const normalizedCategory = intent.parsedFilters.category?.toLowerCase();
+        return (
+          record.category.toLowerCase() === normalizedCategory ||
+          record.categorySlug.toLowerCase() === normalizedCategory
+        );
+      })
+    : recordsInWindow;
+
+  return filterRelevantRecords(recordsInCategory, intent.normalizedQuestion);
+}
+
+function filterRelevantRecords(records: PreparedDiscussionDigest['records'], question: string) {
   const keywords = question
     .split(/\W+/)
     .map((token) => token.toLowerCase())
     .filter((token) => token.length >= 4);
 
   if (keywords.length === 0) {
-    return digest.records;
+    return records;
   }
 
-  const scored = digest.records.map((record) => {
+  const scored = records.map((record) => {
     const haystack = `${record.title} ${record.issue} ${record.resolution} ${record.category} ${record.kind}`.toLowerCase();
     const score = keywords.reduce((acc, keyword) => acc + (haystack.includes(keyword) ? 1 : 0), 0);
     return { record, score };
   });
 
-  const matching = scored.filter((entry) => entry.score > 0).sort((a, b) => b.score - a.score);
-  return matching.length > 0 ? matching.map((entry) => entry.record) : digest.records;
+  const matching = scored.filter((entry) => entry.score > 0).sort((left, right) => right.score - left.score);
+  return matching.length > 0 ? matching.map((entry) => entry.record) : records;
 }
 
-function shouldIncludePatternSection(question: string): boolean {
-  return ['pattern', 'trend', 'common', 'theme', 'recurring'].some((keyword) => question.includes(keyword));
+function matchesIntentWindow(record: PreparedDiscussionDigest['records'][number], intent: DiscussionAnalyzerIntent): boolean {
+  if (!intent.parsedFilters.after && !intent.parsedFilters.before) {
+    return true;
+  }
+
+  const timestamp = new Date(intent.temporalField === 'createdAt' ? record.createdAt : record.updatedAt);
+  if (Number.isNaN(timestamp.getTime())) {
+    return false;
+  }
+
+  if (intent.parsedFilters.after && timestamp < new Date(intent.parsedFilters.after)) {
+    return false;
+  }
+  if (intent.parsedFilters.before && timestamp > new Date(intent.parsedFilters.before)) {
+    return false;
+  }
+
+  return true;
 }
 
-function shouldIncludeEffectivenessSection(question: string): boolean {
-  return ['effectiveness', 'support quality', 'response time', 'sla', 'performance'].some((keyword) =>
-    question.includes(keyword)
-  );
-}
-
-function assertDiscussionScopedQuestion(question: string, normalizedQuestion: string): void {
-  const mentionsIssues = /\bissues?\b/.test(normalizedQuestion);
-  const mentionsDiscussions = /\bdiscussions?\b/.test(normalizedQuestion);
-
-  if (!mentionsIssues || mentionsDiscussions) {
+function assertDiscussionScopedQuestion(intent: DiscussionAnalyzerIntent): void {
+  if (intent.scope !== 'issues') {
     return;
   }
 
-  const correctedQuestion = question.replace(/\bissues?\b/gi, 'discussions');
   throw new DiscussionsOnlyAnalyzerError(
-    [
-      'forge-discussion-analyzer works with GitHub Discussions only.',
-      `Did you mean: "${correctedQuestion}"`,
-      '',
-      'To narrow the results, ask with filters such as:',
-      '- category: "Show discussions in the Ideas category from last week"',
-      '- relative window: "Count discussions created last week"',
-      '- explicit dates: "Summarize discussions after 2026-01-01 and before 2026-01-31"',
-      '- combined scope: "List unresolved discussions in Q&A after 2026-02-15"',
-    ].join('\n')
+    ['Forge analyzes GitHub Discussions only.', `Want "${intent.redirectQuestion ?? intent.question}" instead?`].join(
+      '\n',
+    ),
   );
 }
 
-async function refreshAndPrepareDigest(options: RunDiscussionAnalyzerOptions): Promise<PreparedDiscussionDigest> {
+async function refreshAndPrepareDigest(
+  options: RunDiscussionAnalyzerOptions,
+  intent: DiscussionAnalyzerIntent,
+): Promise<PreparedDiscussionDigest> {
   await runDiscussionFetch({
     cwd: options.cwd,
     token: options.token,
-    when: options.when,
-    after: options.after,
-    before: options.before,
-    category: options.category,
+    when: intent.parsedFilters.when,
+    after: intent.parsedFilters.after,
+    before: intent.parsedFilters.before,
+    category: intent.parsedFilters.category,
     limit: options.limit ?? DEFAULT_ANALYZER_REFRESH_LIMIT,
   });
 
@@ -185,101 +239,24 @@ async function refreshAndPrepareDigest(options: RunDiscussionAnalyzerOptions): P
 }
 
 function deriveCountSummary(
-  digest: PreparedDiscussionDigest,
-  question: string,
-  normalizedQuestion: string,
+  records: PreparedDiscussionDigest['records'],
+  intent: DiscussionAnalyzerIntent,
 ): { count: number; basis: string; records: PreparedDiscussionDigest['records'] } | null {
-  if (!/(count|how many|number of|total)/.test(normalizedQuestion)) {
+  if (!intent.answerShape.wantsCounts) {
     return null;
   }
 
-  const temporalFilter = extractTemporalFilter(question);
-  const useCreatedAt = /\bcreated\b/.test(normalizedQuestion);
-  const records = digest.records.filter((record) => {
-    if (!temporalFilter) {
-      return true;
-    }
-
-    const timestamp = new Date(useCreatedAt ? record.createdAt : record.updatedAt);
-    if (Number.isNaN(timestamp.getTime())) {
-      return false;
-    }
-    if (temporalFilter.after && timestamp < temporalFilter.after) {
-      return false;
-    }
-    if (temporalFilter.before && timestamp > temporalFilter.before) {
-      return false;
-    }
-    return true;
-  });
-
   return {
     count: records.length,
-    basis: temporalFilter
-      ? `${useCreatedAt ? 'createdAt' : 'updatedAt'} filtered by ${temporalFilter.label}`
-      : `${useCreatedAt ? 'createdAt' : 'updatedAt'} across the prepared digest`,
+    basis: describeCountBasis(intent),
     records,
   };
-}
-
-function extractTemporalFilter(question: string): { after?: Date; before?: Date; label: string } | null {
-  const lowered = question.toLowerCase();
-  const sinceMatch = question.match(/\bsince\s+(\d{4}-\d{2}-\d{2})\b/i);
-  if (sinceMatch) {
-    return {
-      after: new Date(`${sinceMatch[1]}T00:00:00.000Z`),
-      label: `since ${sinceMatch[1]}`,
-    };
-  }
-
-  const afterMatch = question.match(/\bafter\s+(\d{4}-\d{2}-\d{2})\b/i);
-  const beforeMatch = question.match(/\bbefore\s+(\d{4}-\d{2}-\d{2})\b/i);
-  if (afterMatch || beforeMatch) {
-    return {
-      after: afterMatch ? new Date(`${afterMatch[1]}T00:00:00.000Z`) : undefined,
-      before: beforeMatch ? new Date(`${beforeMatch[1]}T23:59:59.999Z`) : undefined,
-      label: [
-        afterMatch ? `after ${afterMatch[1]}` : null,
-        beforeMatch ? `before ${beforeMatch[1]}` : null,
-      ].filter(Boolean).join(' and '),
-    };
-  }
-
-  if (/\btoday\b/.test(lowered)) {
-    const now = new Date();
-    return {
-      after: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0)),
-      before: now,
-      label: 'today',
-    };
-  }
-
-  if (/\byesterday\b/.test(lowered)) {
-    const now = new Date();
-    const startOfToday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 0, 0, 0, 0));
-    return {
-      after: new Date(startOfToday.getTime() - 24 * 60 * 60 * 1000),
-      before: startOfToday,
-      label: 'yesterday',
-    };
-  }
-
-  if (/\blast week\b|\blast-week\b/.test(lowered)) {
-    const now = new Date();
-    return {
-      after: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000),
-      before: now,
-      label: 'last week',
-    };
-  }
-
-  return null;
 }
 
 async function persistAnalysisTrace(
   cwd: string,
   digest: PreparedDiscussionDigest,
-  question: string,
+  intent: DiscussionAnalyzerIntent,
   answer: string,
 ): Promise<void> {
   const context = deriveSidecarContext(cwd);
@@ -293,21 +270,36 @@ async function persistAnalysisTrace(
     version: '1.0',
     id: traceId,
     timestamp,
-    question,
+    question: intent.question,
     repository: digest.repository,
     digestId: digest.id,
     sourceRunId: digest.sourceRunId,
+    decision: {
+      refreshUsed: intent.refreshMode !== 'cached',
+      refreshReason: intent.refreshReason,
+      source: describeTraceSource(intent),
+      parsedFilters: {
+        when: intent.parsedFilters.when,
+        after: intent.parsedFilters.after,
+        before: intent.parsedFilters.before,
+        category: intent.parsedFilters.category,
+      },
+    },
     answer,
     digest,
   };
 
   await writeFile(path.join(runDir, 'trace.json'), JSON.stringify(trace, null, 2), 'utf8');
-  await writeFile(path.join(runDir, 'question.txt'), `${question.trim()}\n`, 'utf8');
+  await writeFile(path.join(runDir, 'question.txt'), `${intent.question.trim()}\n`, 'utf8');
   await writeFile(path.join(runDir, 'answer.md'), answer, 'utf8');
   await writeFile(path.join(runDir, 'digest.json'), JSON.stringify(digest, null, 2), 'utf8');
   await writeFile(path.join(runDir, 'digest.md'), renderDigestSnapshot(digest), 'utf8');
 
-  await writeFile(path.join(context.sidecarPath, 'discussions', 'analysis', 'latest-answer.json'), JSON.stringify(trace, null, 2), 'utf8');
+  await writeFile(
+    path.join(context.sidecarPath, 'discussions', 'analysis', 'latest-answer.json'),
+    JSON.stringify(trace, null, 2),
+    'utf8',
+  );
   await writeFile(path.join(context.sidecarPath, 'discussions', 'analysis', 'latest-answer.md'), answer, 'utf8');
 }
 
@@ -335,4 +327,80 @@ function renderDigestSnapshot(digest: PreparedDiscussionDigest): string {
   }
 
   return lines.join('\n').trim();
+}
+
+function describeAnswerSource(intent: DiscussionAnalyzerIntent): string {
+  switch (intent.refreshMode) {
+    case 'fetch':
+      return `fresh fetch (${intent.refreshReason})`;
+    case 'rebuild':
+      return 'rebuilt from latest raw discussion run';
+    default:
+      return 'cached prepared digest';
+  }
+}
+
+function describeTraceSource(intent: DiscussionAnalyzerIntent): DiscussionAnalysisTrace['decision']['source'] {
+  switch (intent.refreshReason) {
+    case 'explicit-force-refresh':
+      return 'explicit-refresh';
+    case 'explicit-refresh-analysis':
+      return 'rebuild-latest-run';
+    case 'current-status-question':
+    case 'time-scoped-question':
+      return 'implicit-refresh';
+    default:
+      return 'cached-digest';
+  }
+}
+
+function describeCountBasis(intent: DiscussionAnalyzerIntent): string {
+  const segments: string[] = [];
+  if (intent.parsedFilters.when) {
+    segments.push(intent.parsedFilters.when);
+  }
+  if (intent.parsedFilters.after) {
+    segments.push(`after ${intent.parsedFilters.after}`);
+  }
+  if (intent.parsedFilters.before) {
+    segments.push(`before ${intent.parsedFilters.before}`);
+  }
+
+  return segments.length > 0
+    ? `${intent.temporalField} filtered by ${segments.join(' and ')}`
+    : `${intent.temporalField} across the prepared digest`;
+}
+
+function groupRecordsByCategory(
+  records: PreparedDiscussionDigest['records'],
+): Map<string, PreparedDiscussionDigest['records']> {
+  const grouped = new Map<string, PreparedDiscussionDigest['records']>();
+  const sorted = [...records].sort((left, right) => {
+    if (left.category === right.category) {
+      return right.updatedAt.localeCompare(left.updatedAt);
+    }
+    return left.category.localeCompare(right.category);
+  });
+
+  for (const record of sorted) {
+    const existing = grouped.get(record.category) ?? [];
+    existing.push(record);
+    grouped.set(record.category, existing);
+  }
+
+  return grouped;
+}
+
+function countBy(values: string[]): Record<string, number> {
+  return values.reduce<Record<string, number>>((acc, value) => {
+    acc[value] = (acc[value] ?? 0) + 1;
+    return acc;
+  }, {});
+}
+
+function formatCountMap(values: Record<string, number>): string {
+  return Object.entries(values)
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+    .map(([label, count]) => `${label}: ${count}`)
+    .join(', ');
 }

@@ -198,6 +198,7 @@ describe('CLI Smoke Tests - Installer Flow', () => {
             discussions: 1,
             statuses: { unresolved: 1 },
             kinds: { consultation: 1 },
+            categories: { Ideas: 1 },
           },
           records: [
             {
@@ -205,6 +206,8 @@ describe('CLI Smoke Tests - Installer Flow', () => {
               title: 'Patterns in support',
               url: 'https://github.com/ajitgunturi/forge/discussions/101',
               category: 'Ideas',
+              categorySlug: 'ideas',
+              createdAt: '2026-03-03T08:00:00.000Z',
               status: 'unresolved',
               kind: 'consultation',
               issue: 'Users repeatedly ask about authentication setup and filtering.',
@@ -227,6 +230,8 @@ describe('CLI Smoke Tests - Installer Flow', () => {
 
       expect(exitCode).toBe(0);
       expect(stdout).toContain('GitHub Discussions Digest');
+      expect(stdout).toContain('## Category Summary');
+      expect(stdout).toContain('## Ideas');
       expect(stdout).toContain('Pattern Analysis');
       expect(stdout).toContain('Patterns in support');
     });
