@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { installAssistantsCommand } from "./commands/install-assistants.js";
 import { runDiscussionAnalyzer } from "./services/discussions/analyze.js";
-import { runDiscussionFetch } from "./services/discussions/run.js";
+import { AssistantId } from "./contracts/assistants.js";
 
 type PackageManifest = {
   name?: string;
@@ -14,7 +14,7 @@ type PackageManifest = {
 type ProgramOptions = {
   cwd: string;
   verbose?: boolean;
-  fetchDiscussions?: boolean;
+  assistants?: string;
   run?: string;
   runSummonable?: string;
   question?: string;
@@ -45,22 +45,22 @@ export async function createProgram(): Promise<Command> {
 
   program
     .name(EXECUTABLE_NAME)
-    .description("Install the Forge Copilot runtime into ~/.copilot and run Forge-managed GitHub discussion workflows.")
+    .description("Install Forge assistant assets for Copilot, Claude, Codex, and Gemini, and run Forge-managed GitHub discussion workflows.")
     .version(manifest.version ?? "0.0.0", "-v, --version", "output the current version")
     .option("--cwd <path>", "The working directory to run the command in.", process.cwd())
     .option("--verbose", "Show detailed installer update output.")
-    .option("--fetch-discussions", "Fetch GitHub Discussions for the current repository into .forge/discussions.")
+    .option("--assistants <targets>", "Install assistant assets for: all, copilot, claude, codex, or gemini.")
     .option("--run <analyzer>", "Run a Forge-managed analyzer.")
-    .option("--question <text>", "Question or request for Forge-managed summonable execution.")
-    .option("--refresh-analysis", "Rebuild compact discussion-analysis artifacts before answering.")
-    .option("--force-refresh", "Refetch GitHub Discussions before answering and rebuild the prepared analysis digest.")
+    .option("--question <text>", "Question or request for Forge-managed assistant execution.")
+    .option("--refresh-analysis", "Re-run the live discussion analysis before answering.")
+    .option("--force-refresh", "Compatibility flag. The discussion analyzer already fetches live on every run.")
     .option("--github-token <token>", "Explicit GitHub token override for discussions fetches.")
     .option("--when <window>", "Relative discussions window: today, yesterday, or last-week.")
     .option("--after <date>", "Only include discussions created on or after this date by default.")
     .option("--before <date>", "Only include discussions created on or before this date by default.")
     .option("--category <name>", "Filter discussions by GitHub discussion category name or slug.")
     .option("--discussion-limit <number>", "Maximum number of discussions to persist (1-5000).", "500")
-    .addOption(new Option("--run-summonable <id>", "Run a Forge-managed summonable backend directly.").hideHelp())
+    .addOption(new Option("--run-summonable <id>", "Run a Forge-managed assistant backend directly.").hideHelp())
     .hook("preAction", (thisCommand) => {
       const options = thisCommand.opts();
       if (options.cwd && options.cwd !== process.cwd()) {
@@ -93,24 +93,34 @@ export async function createProgram(): Promise<Command> {
       return;
     }
 
-    if (options.fetchDiscussions) {
-      const run = await runDiscussionFetch({
-        cwd: options.cwd,
-        token: options.githubToken,
-        when: options.when,
-        after: options.after,
-        before: options.before,
-        category: options.category,
-        limit: Number.parseInt(options.discussionLimit ?? "25", 10),
-      });
-
-      console.log(`Fetched ${run.discussionCount} discussions for ${run.repository.owner}/${run.repository.name}.`);
-      console.log('Artifacts written to .forge/discussions/latest.json and .forge/discussions/latest.md');
-      return;
-    }
-
-    await installAssistantsCommand(options.cwd, { verbose: options.verbose });
+    await installAssistantsCommand(options.cwd, {
+      verbose: options.verbose,
+      assistants: parseAssistantSelection(options.assistants),
+      version: manifest.version ?? "0.0.0",
+    });
   });
 
   return program;
+}
+
+function parseAssistantSelection(value?: string): AssistantId[] | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case 'all':
+      return ['copilot', 'claude', 'codex', 'gemini'];
+    case 'copilot':
+      return ['copilot'];
+    case 'claude':
+      return ['claude'];
+    case 'codex':
+      return ['codex'];
+    case 'gemini':
+      return ['gemini'];
+    default:
+      throw new Error(`Unknown assistant target "${value}". Use one of: all, copilot, claude, codex, gemini.`);
+  }
 }

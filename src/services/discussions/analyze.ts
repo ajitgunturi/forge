@@ -1,11 +1,10 @@
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { PreparedDiscussionDigest, DiscussionAnalysisTrace } from '../../contracts/discussions.js';
+import { DiscussionSummaryArtifact, PreparedDiscussionDigest } from '../../contracts/discussions.js';
 import { DiscussionArtifactsRequiredError, DiscussionsOnlyAnalyzerError } from '../../lib/errors.js';
 import { deriveSidecarContext } from '../sidecar.js';
-import { loadLatestPreparedDiscussionDigest, prepareLatestDiscussionDigest } from './prepare.js';
+import { buildPreparedDiscussionDigest } from './prepare.js';
 import { analyzeDiscussionRequestIntent, DiscussionAnalyzerIntent } from './request-intent.js';
-import { loadPreferredDiscussionCategory, savePreferredDiscussionCategory } from './preferences.js';
 import { runDiscussionFetch } from './run.js';
 
 export interface RunDiscussionAnalyzerOptions {
@@ -24,7 +23,6 @@ export interface RunDiscussionAnalyzerOptions {
 const DEFAULT_ANALYZER_REFRESH_LIMIT = 1000;
 
 export async function runDiscussionAnalyzer(options: RunDiscussionAnalyzerOptions): Promise<string> {
-  const preferredCategory = await loadPreferredDiscussionCategory(options.cwd);
   const intent = analyzeDiscussionRequestIntent({
     question: options.question,
     forceRefresh: options.forceRefresh,
@@ -34,7 +32,6 @@ export async function runDiscussionAnalyzer(options: RunDiscussionAnalyzerOption
     before: options.before,
     category: options.category,
     limit: options.limit,
-    preferredCategory,
   });
 
   if (!intent.normalizedQuestion) {
@@ -42,43 +39,38 @@ export async function runDiscussionAnalyzer(options: RunDiscussionAnalyzerOption
   }
   assertDiscussionScopedQuestion(intent);
 
-  const digest = await loadDigestForIntent(options, intent);
+  const digest = await fetchDigestForIntent(options, intent);
   const answer = renderAnswer(digest, intent);
-  await persistAnalysisTrace(options.cwd, digest, intent, answer);
+  await persistDiscussionSummary(options.cwd, digest, intent, answer);
   return answer;
 }
 
-async function loadDigestForIntent(
+async function fetchDigestForIntent(
   options: RunDiscussionAnalyzerOptions,
   intent: DiscussionAnalyzerIntent,
 ): Promise<PreparedDiscussionDigest> {
-  switch (intent.refreshMode) {
-    case 'fetch':
-      return refreshAndPrepareDigest(options, intent);
-    case 'rebuild':
-      return prepareLatestDiscussionDigest(options.cwd);
-    default:
-      return loadOrPrepareDigest(options.cwd);
-  }
-}
+  const fetched = await runDiscussionFetch({
+    cwd: options.cwd,
+    token: options.token,
+    when: intent.parsedFilters.when,
+    after: intent.parsedFilters.after,
+    before: intent.parsedFilters.before,
+    category: intent.parsedFilters.category,
+    dateField: intent.temporalField,
+    limit: options.limit ?? DEFAULT_ANALYZER_REFRESH_LIMIT,
+  });
 
-async function loadOrPrepareDigest(cwd: string): Promise<PreparedDiscussionDigest> {
-  const digest = await loadLatestPreparedDiscussionDigest(cwd);
-  if (digest) {
-    return digest;
-  }
-
-  return prepareLatestDiscussionDigest(cwd);
+  return buildPreparedDiscussionDigest(fetched);
 }
 
 function renderAnswer(digest: PreparedDiscussionDigest, intent: DiscussionAnalyzerIntent): string {
   const selectedRecords = selectRelevantRecords(digest, intent);
-  const records = intent.answerShape.wantsCategoryHealth ? selectedRecords : selectedRecords.slice(0, 12);
-  const countSummary = deriveCountSummary(records, intent);
-  const categoryGroups = groupRecordsByCategory(countSummary?.records ?? records);
+  const records = shouldLimitRenderedRecords(intent) ? selectedRecords.slice(0, 12) : selectedRecords;
+  const countSummary = deriveCountSummary(selectedRecords, intent);
+  const categoryGroups = groupRecordsByCategory(selectedRecords);
 
   if (intent.answerShape.wantsCategoryHealth && intent.parsedFilters.category) {
-    return renderCategoryHealthAnswer(digest, intent, records);
+    return renderCategoryHealthAnswer(digest, intent, selectedRecords);
   }
 
   const lines: string[] = [
@@ -112,7 +104,7 @@ function renderAnswer(digest: PreparedDiscussionDigest, intent: DiscussionAnalyz
 
   if (categoryGroups.size === 0) {
     lines.push('## Matching Discussions');
-    lines.push('No discussions matched the requested scope in the prepared digest.');
+    lines.push('No discussions matched the requested scope in the live fetched discussions.');
     lines.push('');
   }
 
@@ -188,6 +180,22 @@ function shouldUseKeywordFiltering(intent: DiscussionAnalyzerIntent): boolean {
   return true;
 }
 
+function shouldLimitRenderedRecords(intent: DiscussionAnalyzerIntent): boolean {
+  if (intent.answerShape.wantsCategoryHealth || intent.answerShape.wantsCounts || intent.answerShape.wantsPatterns) {
+    return false;
+  }
+
+  if (intent.parsedFilters.category || intent.parsedFilters.when || intent.parsedFilters.after || intent.parsedFilters.before) {
+    return false;
+  }
+
+  if (/\b(all discussions|grouped by category|all categories|summary)\b/.test(intent.normalizedQuestion)) {
+    return false;
+  }
+
+  return true;
+}
+
 function filterRelevantRecords(records: PreparedDiscussionDigest['records'], question: string) {
   const keywords = question
     .split(/\W+/)
@@ -240,28 +248,6 @@ function assertDiscussionScopedQuestion(intent: DiscussionAnalyzerIntent): void 
   );
 }
 
-async function refreshAndPrepareDigest(
-  options: RunDiscussionAnalyzerOptions,
-  intent: DiscussionAnalyzerIntent,
-): Promise<PreparedDiscussionDigest> {
-  const fetched = await runDiscussionFetch({
-    cwd: options.cwd,
-    token: options.token,
-    when: intent.parsedFilters.when,
-    after: intent.parsedFilters.after,
-    before: intent.parsedFilters.before,
-    category: intent.parsedFilters.category,
-    dateField: intent.temporalField,
-    limit: options.limit ?? DEFAULT_ANALYZER_REFRESH_LIMIT,
-  });
-
-  if (fetched.filters.resolvedCategory) {
-    await savePreferredDiscussionCategory(options.cwd, fetched.filters.resolvedCategory);
-  }
-
-  return prepareLatestDiscussionDigest(options.cwd);
-}
-
 function deriveCountSummary(
   records: PreparedDiscussionDigest['records'],
   intent: DiscussionAnalyzerIntent,
@@ -277,7 +263,7 @@ function deriveCountSummary(
   };
 }
 
-async function persistAnalysisTrace(
+async function persistDiscussionSummary(
   cwd: string,
   digest: PreparedDiscussionDigest,
   intent: DiscussionAnalyzerIntent,
@@ -285,98 +271,44 @@ async function persistAnalysisTrace(
 ): Promise<void> {
   const context = deriveSidecarContext(cwd);
   const timestamp = new Date().toISOString();
-  const traceId = `${digest.id}-${timestamp.replace(/[:.]/g, '-')}`;
-  const runsPath = path.join(context.sidecarPath, 'discussions', 'analysis', 'runs');
-  const runDir = path.join(runsPath, traceId);
+  const summaryId = `${digest.sourceRunId}-summary-${timestamp.replace(/[:.]/g, '-')}`;
+  const summaryBasePath = path.join(context.sidecarPath, 'discussions', 'summary');
+  const runsPath = path.join(summaryBasePath, 'runs');
+  const runDir = path.join(runsPath, summaryId);
   await mkdir(runDir, { recursive: true });
 
-  const trace: DiscussionAnalysisTrace = {
+  const selectedRecords = selectRelevantRecords(digest, intent);
+  const summary: DiscussionSummaryArtifact = {
     version: '1.0',
-    id: traceId,
+    id: summaryId,
     timestamp,
     question: intent.question,
     repository: digest.repository,
-    digestId: digest.id,
     sourceRunId: digest.sourceRunId,
-    decision: {
-      refreshUsed: intent.refreshMode !== 'cached',
-      refreshReason: intent.refreshReason,
-      source: describeTraceSource(intent),
-      parsedFilters: {
-        when: intent.parsedFilters.when,
-        after: intent.parsedFilters.after,
-        before: intent.parsedFilters.before,
-        category: intent.parsedFilters.category,
-        dateField: intent.parsedFilters.dateField,
-      },
+    source: 'live-fetch',
+    filters: {
+      when: intent.parsedFilters.when,
+      after: intent.parsedFilters.after,
+      before: intent.parsedFilters.before,
+      category: intent.parsedFilters.category,
+      dateField: intent.parsedFilters.dateField,
     },
+    discussionCount: selectedRecords.length,
+    categoryBreakdown: countBy(selectedRecords.map((record) => record.category)),
+    statusBreakdown: countBy(selectedRecords.map((record) => record.status)),
     answer,
-    digest,
   };
 
-  await writeFile(path.join(runDir, 'trace.json'), JSON.stringify(trace, null, 2), 'utf8');
+  await writeFile(path.join(runDir, 'summary.json'), JSON.stringify(summary, null, 2), 'utf8');
   await writeFile(path.join(runDir, 'question.txt'), `${intent.question.trim()}\n`, 'utf8');
   await writeFile(path.join(runDir, 'answer.md'), answer, 'utf8');
-  await writeFile(path.join(runDir, 'digest.json'), JSON.stringify(digest, null, 2), 'utf8');
-  await writeFile(path.join(runDir, 'digest.md'), renderDigestSnapshot(digest), 'utf8');
-
-  await writeFile(
-    path.join(context.sidecarPath, 'discussions', 'analysis', 'latest-answer.json'),
-    JSON.stringify(trace, null, 2),
-    'utf8',
-  );
-  await writeFile(path.join(context.sidecarPath, 'discussions', 'analysis', 'latest-answer.md'), answer, 'utf8');
-}
-
-function renderDigestSnapshot(digest: PreparedDiscussionDigest): string {
-  const lines = [
-    `# Analysis Input Digest: ${digest.repository.owner}/${digest.repository.name}`,
-    '',
-    `**Digest ID:** \`${digest.id}\`  `,
-    `**Source Run:** \`${digest.sourceRunId}\`  `,
-    `**Timestamp:** ${digest.timestamp}  `,
-    `**Discussion Count:** ${digest.totals.discussions}  `,
-    '',
-    '## Records',
-    '',
-  ];
-
-  for (const record of digest.records) {
-    lines.push(`### #${record.number}: ${record.title}`);
-    lines.push(`- Status: ${record.status}`);
-    lines.push(`- Kind: ${record.kind}`);
-    lines.push(`- Category: ${record.category}`);
-    lines.push(`- Issue: ${record.issue}`);
-    lines.push(`- Resolution: ${record.resolution}`);
-    lines.push('');
-  }
-
-  return lines.join('\n').trim();
+  await writeFile(path.join(summaryBasePath, 'latest.json'), JSON.stringify(summary, null, 2), 'utf8');
+  await writeFile(path.join(summaryBasePath, 'latest.md'), answer, 'utf8');
 }
 
 function describeAnswerSource(intent: DiscussionAnalyzerIntent): string {
-  switch (intent.refreshMode) {
-    case 'fetch':
-      return `fresh fetch (${intent.refreshReason})`;
-    case 'rebuild':
-      return 'rebuilt from latest raw discussion run';
-    default:
-      return 'cached prepared digest';
-  }
-}
-
-function describeTraceSource(intent: DiscussionAnalyzerIntent): DiscussionAnalysisTrace['decision']['source'] {
-  switch (intent.refreshReason) {
-    case 'explicit-force-refresh':
-      return 'explicit-refresh';
-    case 'explicit-refresh-analysis':
-      return 'rebuild-latest-run';
-    case 'current-status-question':
-    case 'time-scoped-question':
-      return 'implicit-refresh';
-    default:
-      return 'cached-digest';
-  }
+  void intent;
+  return 'live fetch';
 }
 
 function describeCountBasis(intent: DiscussionAnalyzerIntent): string {
@@ -393,7 +325,7 @@ function describeCountBasis(intent: DiscussionAnalyzerIntent): string {
 
   return segments.length > 0
     ? `${intent.temporalField} filtered by ${segments.join(' and ')}`
-    : `${intent.temporalField} across the prepared digest`;
+    : `${intent.temporalField} across the live fetched discussions`;
 }
 
 function renderCategoryHealthAnswer(

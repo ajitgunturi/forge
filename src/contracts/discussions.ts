@@ -58,15 +58,6 @@ export interface DiscussionRun {
   discussions: DiscussionRecord[];
 }
 
-export interface DiscussionRunSummary {
-  id: string;
-  timestamp: string;
-  repository: string;
-  discussionCount: number;
-  artifactPath: string;
-  filterDescription?: string;
-}
-
 export type DiscussionStatus =
   | 'resolved'
   | 'unresolved'
@@ -118,26 +109,23 @@ export interface PreparedDiscussionDigest {
   records: PreparedDiscussionRecord[];
 }
 
-export interface DiscussionAnalysisTrace {
+export interface DiscussionSummaryArtifact {
   version: '1.0';
   id: string;
   timestamp: string;
   question: string;
   repository: GitHubRepositoryRef;
-  digestId: string;
   sourceRunId: string;
-  decision: {
-    refreshUsed: boolean;
-    refreshReason: string;
-    source: 'explicit-refresh' | 'implicit-refresh' | 'cached-digest' | 'rebuild-latest-run';
-      parsedFilters: {
-        when?: string;
-        after?: string;
-        before?: string;
-        category?: string;
-        dateField?: 'createdAt' | 'updatedAt';
-      };
-    };
+  source: 'live-fetch';
+  filters: {
+    when?: string;
+    after?: string;
+    before?: string;
+    category?: string;
+    dateField?: 'createdAt' | 'updatedAt';
+  };
+  discussionCount: number;
+  categoryBreakdown: Record<string, number>;
+  statusBreakdown: Record<string, number>;
   answer: string;
-  digest: PreparedDiscussionDigest;
 }

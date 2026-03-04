@@ -17,17 +17,17 @@ describe('CLI Smoke Tests - Installer Flow', () => {
 
   afterEach(async () => {
     if (tempRepoPath) {
-      await rm(tempRepoPath, { recursive: true, force: true });
+      await safeRm(tempRepoPath);
     }
     if (tempHomePath) {
-      await rm(tempHomePath, { recursive: true, force: true });
+      await safeRm(tempHomePath);
     }
   });
 
   const runCLI = (
     args: string[],
     cwd: string = tempRepoPath,
-    options: { input?: string; env?: NodeJS.ProcessEnv } = {}
+    options: { input?: string; env?: NodeJS.ProcessEnv } = {},
   ) => {
     return execa('node', [CLI_PATH, ...args], {
       cwd,
@@ -35,6 +35,7 @@ describe('CLI Smoke Tests - Installer Flow', () => {
       env: {
         ...process.env,
         HOME: tempHomePath,
+        FORGE_SKIP_SELF_REFRESH: '1',
         ...options.env,
       },
     });
@@ -50,7 +51,14 @@ describe('CLI Smoke Tests - Installer Flow', () => {
   };
 
   const packArtifact = async () => {
-    const { stdout } = await execa('npm', ['pack', '--json'], { cwd: process.cwd() });
+    const npmCachePath = await mkdtemp(join(tmpdir(), 'forge-npm-cache-'));
+    const { stdout } = await execa('npm', ['pack', '--json'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        npm_config_cache: npmCachePath,
+      },
+    });
     const parsed = JSON.parse(stdout) as Array<{ filename: string }>;
     const filename = parsed[0]?.filename;
 
@@ -61,96 +69,169 @@ describe('CLI Smoke Tests - Installer Flow', () => {
     return join(process.cwd(), filename);
   };
 
+  const resetTempPaths = async () => {
+    await safeRm(tempRepoPath);
+    await safeRm(tempHomePath);
+    tempRepoPath = await mkdtemp(join(tmpdir(), 'forge-smoke-test-'));
+    tempHomePath = await mkdtemp(join(tmpdir(), 'forge-home-test-'));
+  };
+
   describe('default installer', () => {
-    it('installs the Copilot runtime globally under ~/.copilot from the default flow', async () => {
-      const { exitCode, stdout } = await runCLI([], tempRepoPath);
-      const globalCopilotPath = join(tempHomePath, '.copilot');
+    it('installs all runtime assets in the expected global locations', async () => {
+      const { exitCode, stdout } = await runCLI([]);
+      const copilotRoot = join(tempHomePath, '.copilot');
+      const claudeRoot = join(tempHomePath, '.claude');
+      const codexRoot = join(tempHomePath, '.codex');
+      const geminiRoot = join(tempHomePath, '.gemini');
 
       expect(exitCode).toBe(0);
-      expect(stdout).toContain(`Installing Forge Copilot runtime to ${globalCopilotPath}`);
+      expect(stdout).toContain(`Installing Forge Copilot runtime to ${copilotRoot}`);
+      expect(stdout).toContain(`Installing Forge Claude assets to ${claudeRoot}`);
+      expect(stdout).toContain(`Installing Forge Codex assets to ${codexRoot}`);
+      expect(stdout).toContain(`Installing Forge Gemini assets to ${geminiRoot}`);
       expect(stdout).toContain('✅ copilot');
-      expect(await fileExists(join(globalCopilotPath, 'agents/forge-discussion-analyzer.agent.md'))).toBe(true);
-      expect(await fileExists(join(globalCopilotPath, 'forge/bin/forge.mjs'))).toBe(true);
-      expect(await fileExists(join(globalCopilotPath, 'forge/dist/cli.js'))).toBe(true);
-      expect(await fileExists(join(globalCopilotPath, 'forge/node_modules'))).toBe(true);
-      expect(await fileExists(join(globalCopilotPath, 'forge/VERSION'))).toBe(true);
-      expect(await fileExists(join(globalCopilotPath, 'forge/forge-file-manifest.json'))).toBe(true);
-      expect(await fileExists(join(globalCopilotPath, 'agents/forge-agent.agent.md'))).toBe(false);
-      expect(await fileExists(join(tempRepoPath, '.claude/forge-agent.md'))).toBe(false);
-      expect(await fileExists(join(tempRepoPath, '.codex/forge-agent.md'))).toBe(false);
-      expect(await fileExists(join(tempRepoPath, '.gemini/forge-agent.md'))).toBe(false);
+      expect(stdout).toContain('✅ claude');
+      expect(stdout).toContain('✅ codex');
+      expect(stdout).toContain('✅ gemini');
+
+      expect(await fileExists(join(copilotRoot, 'agents/forge-discussion-analyzer.agent.md'))).toBe(true);
+      expect(await fileExists(join(copilotRoot, 'skills/forge-discussion-analyzer/SKILL.md'))).toBe(true);
+
+      expect(await fileExists(join(claudeRoot, 'commands/forge/discussion-analyzer.md'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'agents/forge-discussion-analyzer.md'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'forge/workflows/discussion-analyzer.md'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'skills/forge:discussion-analyzer/SKILL.md'))).toBe(false);
+
+      expect(await fileExists(join(codexRoot, 'skills/forge-discussion-analyzer/SKILL.md'))).toBe(true);
+      expect(await fileExists(join(codexRoot, 'agents/forge-discussion-analyzer.md'))).toBe(true);
+      expect(await fileExists(join(codexRoot, 'agents/forge-discussion-analyzer.toml'))).toBe(true);
+      expect(await fileExists(join(codexRoot, 'forge/workflows/discussion-analyzer.md'))).toBe(true);
+      expect(await fileExists(join(codexRoot, 'forge:discussion-analyzer.md'))).toBe(false);
+
+      expect(await fileExists(join(geminiRoot, 'commands/forge/discussion-analyzer.toml'))).toBe(true);
+      expect(await fileExists(join(geminiRoot, 'agents/forge-discussion-analyzer.md'))).toBe(true);
+      expect(await fileExists(join(geminiRoot, 'forge/workflows/discussion-analyzer.md'))).toBe(true);
+      expect(await fileExists(join(geminiRoot, 'forge:discussion-analyzer.md'))).toBe(false);
+
+      expect(await fileExists(join(copilotRoot, 'forge/bin/forge.mjs'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'forge/bin/forge.mjs'))).toBe(true);
+      expect(await fileExists(join(codexRoot, 'forge/bin/forge.mjs'))).toBe(true);
+      expect(await fileExists(join(geminiRoot, 'forge/bin/forge.mjs'))).toBe(true);
+
+      expect(await fileExists(join(tempRepoPath, '.codex/forge:discussion-analyzer.md'))).toBe(false);
+      expect(await fileExists(join(tempRepoPath, '.gemini/forge:discussion-analyzer.md'))).toBe(false);
+      expect(await fileExists(join(tempRepoPath, '.codex'))).toBe(false);
+      expect(await fileExists(join(tempRepoPath, '.gemini'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.config/gh'))).toBe(false);
+    }, 20000);
+
+    it('installs content that points each runtime at its own bundled backend', async () => {
+      await runCLI([]);
+
+      const copilotAgent = await readFile(join(tempHomePath, '.copilot/agents/forge-discussion-analyzer.agent.md'), 'utf8');
+      const claudeCommand = await readFile(join(tempHomePath, '.claude/commands/forge/discussion-analyzer.md'), 'utf8');
+      const claudeAgent = await readFile(join(tempHomePath, '.claude/agents/forge-discussion-analyzer.md'), 'utf8');
+      const codexSkill = await readFile(join(tempHomePath, '.codex/skills/forge-discussion-analyzer/SKILL.md'), 'utf8');
+      const codexAgentToml = await readFile(join(tempHomePath, '.codex/agents/forge-discussion-analyzer.toml'), 'utf8');
+      const geminiCommand = await readFile(join(tempHomePath, '.gemini/commands/forge/discussion-analyzer.toml'), 'utf8');
+
+      expect(copilotAgent).toContain('node "$HOME/.copilot/forge/bin/forge.mjs" --run forge-discussion-analyzer --question');
+      expect(claudeCommand).toContain('---\nname: forge:discussion-analyzer');
+      expect(claudeCommand).toContain(`@${join(tempHomePath, '.claude/forge/workflows/discussion-analyzer.md')}`);
+      expect(claudeAgent).toContain('node "$HOME/.claude/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "<question>"');
+      expect(codexSkill).toContain('`$forge-discussion-analyzer`');
+      expect(codexSkill).toContain(`@${join(tempHomePath, '.codex/forge/workflows/discussion-analyzer.md')}`);
+      expect(codexAgentToml).toContain('node "$HOME/.codex/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "<question>"');
+      expect(geminiCommand).toContain('Forge backend: node \\"$HOME/.gemini/forge/bin/forge.mjs\\" --run forge-discussion-analyzer --question \\"<question>\\"');
+      expect(geminiCommand).toContain('Do not inspect the codebase, search the repository, or read files under ~/.gemini before deciding what to do.');
     });
 
-    it('installs Copilot agents into ~/.copilot/agents for /agent discovery', async () => {
-      const { exitCode } = await runCLI([], tempRepoPath);
-      const globalCopilotPath = join(tempHomePath, '.copilot');
+    it('preserves user customizations for managed markdown assets on reinstall', async () => {
+      await runCLI([]);
+      const copilotSkillPath = join(tempHomePath, '.copilot/skills/forge-discussion-analyzer/SKILL.md');
+      const claudeCommandPath = join(tempHomePath, '.claude/commands/forge/discussion-analyzer.md');
+      const codexSkillPath = join(tempHomePath, '.codex/skills/forge-discussion-analyzer/SKILL.md');
+      const geminiAgentPath = join(tempHomePath, '.gemini/agents/forge-discussion-analyzer.md');
 
-      expect(exitCode).toBe(0);
-      expect(await fileExists(join(globalCopilotPath, 'agents/forge-discussion-analyzer.agent.md'))).toBe(true);
-
-      const copilotAnalyzer = await readFile(
-        join(globalCopilotPath, 'agents/forge-discussion-analyzer.agent.md'),
-        'utf8'
+      await writeFile(
+        copilotSkillPath,
+        (await readFile(copilotSkillPath, 'utf8')).replace(
+          '<!-- Add team- or user-specific Copilot skill instructions below this line. -->',
+          'Team custom Copilot skill instruction',
+        ),
+        'utf8',
       );
-      if (!copilotAnalyzer) {
-        throw new Error('missing copilot analyzer asset');
-      }
-      expect(copilotAnalyzer).toContain('---\nname: forge-discussion-analyzer');
-      expect(copilotAnalyzer).toContain('description: Analyze GitHub Discussions');
-      expect(copilotAnalyzer).toContain('tools:\n  - read_file');
-      expect(copilotAnalyzer).toContain('color: blue');
-      expect(copilotAnalyzer).toContain('Forge Discussion Analyzer');
-      expect(copilotAnalyzer).toContain('node "$HOME/.copilot/forge/bin/forge.mjs" --run forge-discussion-analyzer --question');
-      expect(copilotAnalyzer).toContain('Ask for approval once for the Forge command');
-      expect(copilotAnalyzer).toContain('Do not run npm install, repair Forge dependencies, or switch to raw gh api graphql');
-      expect(copilotAnalyzer).toContain('If Forge fails or times out because of network or GitHub API issues, report the Forge failure and stop');
-      expect(copilotAnalyzer).toContain('## Instructions');
-      expect(copilotAnalyzer).toContain('- Use this summonable for discussion digests, triage, pattern analysis, and follow-up answers.');
-      expect(copilotAnalyzer).toContain('## Commands');
-      expect(copilotAnalyzer).toContain('- **/agent forge-discussion-analyzer**');
-      expect(copilotAnalyzer).toContain('<!-- BEGIN FORGE MANAGED BLOCK -->');
-      expect(copilotAnalyzer).toContain('<!-- BEGIN USER CUSTOMIZATIONS -->');
-    });
-
-    it('preserves user customizations inside the Copilot agent file on reinstall', async () => {
-      await runCLI([], tempRepoPath);
-      const agentPath = join(tempHomePath, '.copilot/agents/forge-discussion-analyzer.agent.md');
-      const customized = (await readFile(agentPath, 'utf8')).replace(
-        '<!-- Add team- or user-specific Copilot instructions below this line. -->',
-        'Team custom instruction: escalate billing issues to the support lead.',
+      await writeFile(
+        claudeCommandPath,
+        (await readFile(claudeCommandPath, 'utf8')).replace(
+          '<!-- Add team- or user-specific Claude command instructions below this line. -->',
+          'Team custom Claude command instruction',
+        ),
+        'utf8',
       );
-      await writeFile(agentPath, customized, 'utf8');
-
-      await runCLI([], tempRepoPath);
-
-      const reloaded = await readFile(agentPath, 'utf8');
-      expect(reloaded).toContain('Team custom instruction: escalate billing issues to the support lead.');
-      expect(reloaded).toContain('<!-- BEGIN FORGE MANAGED BLOCK -->');
-    });
-
-    it('writes installer metadata for reruns and bundled runtime state', async () => {
-      await runCLI([], tempRepoPath);
-
-      const manifestRaw = await readFile(
-        join(tempHomePath, '.copilot/forge/forge-file-manifest.json'),
-        'utf8'
+      await writeFile(
+        codexSkillPath,
+        (await readFile(codexSkillPath, 'utf8')).replace(
+          '<!-- Add team- or user-specific Codex skill instructions below this line. -->',
+          'Team custom Codex skill instruction',
+        ),
+        'utf8',
       );
-      const manifest = JSON.parse(manifestRaw) as {
+      await writeFile(
+        geminiAgentPath,
+        (await readFile(geminiAgentPath, 'utf8')).replace(
+          '<!-- Add team- or user-specific Gemini agent instructions below this line. -->',
+          'Team custom Gemini agent instruction',
+        ),
+        'utf8',
+      );
+
+      await runCLI([]);
+
+      expect(await readFile(copilotSkillPath, 'utf8')).toContain('Team custom Copilot skill instruction');
+      expect(await readFile(claudeCommandPath, 'utf8')).toContain('Team custom Claude command instruction');
+      expect(await readFile(codexSkillPath, 'utf8')).toContain('Team custom Codex skill instruction');
+      expect(await readFile(geminiAgentPath, 'utf8')).toContain('Team custom Gemini agent instruction');
+    }, 20000);
+
+    it('writes installer metadata for every runtime bundle', async () => {
+      await runCLI([]);
+
+      const claudeManifest = JSON.parse(
+        await readFile(join(tempHomePath, '.claude/forge/forge-file-manifest.json'), 'utf8'),
+      ) as {
         installRoot: string;
         runtimePath: string;
         runtimeEntryPath: string;
         agentsPath: string;
-        summonables: string[];
+        commandsPath?: string;
+        workflowsPath?: string;
         bundledFiles: string[];
       };
+      const codexManifest = JSON.parse(
+        await readFile(join(tempHomePath, '.codex/forge/forge-file-manifest.json'), 'utf8'),
+      ) as {
+        skillsPath?: string;
+        workflowsPath?: string;
+      };
+      const geminiManifest = JSON.parse(
+        await readFile(join(tempHomePath, '.gemini/forge/forge-file-manifest.json'), 'utf8'),
+      ) as {
+        commandsPath?: string;
+        workflowsPath?: string;
+      };
 
-      expect(manifest.installRoot).toBe(join(tempHomePath, '.copilot'));
-      expect(manifest.runtimePath).toBe(join(tempHomePath, '.copilot/forge'));
-      expect(manifest.runtimeEntryPath).toBe(join(tempHomePath, '.copilot/forge/bin/forge.mjs'));
-      expect(manifest.agentsPath).toBe(join(tempHomePath, '.copilot/agents'));
-      expect(manifest.summonables).toEqual(['forge-discussion-analyzer']);
-      expect(manifest.bundledFiles).toContain('forge/dist');
-      expect(manifest.bundledFiles).toContain('forge/node_modules');
+      expect(claudeManifest.installRoot).toBe(join(tempHomePath, '.claude'));
+      expect(claudeManifest.runtimePath).toBe(join(tempHomePath, '.claude/forge'));
+      expect(claudeManifest.runtimeEntryPath).toBe(join(tempHomePath, '.claude/forge/bin/forge.mjs'));
+      expect(claudeManifest.agentsPath).toBe(join(tempHomePath, '.claude/agents'));
+      expect(claudeManifest.commandsPath).toBe(join(tempHomePath, '.claude/commands'));
+      expect(claudeManifest.workflowsPath).toBe(join(tempHomePath, '.claude/forge/workflows'));
+      expect(claudeManifest.bundledFiles).toContain('forge/dist');
+      expect(codexManifest.skillsPath).toBe(join(tempHomePath, '.codex/skills'));
+      expect(codexManifest.workflowsPath).toBe(join(tempHomePath, '.codex/forge/workflows'));
+      expect(geminiManifest.commandsPath).toBe(join(tempHomePath, '.gemini/commands'));
+      expect(geminiManifest.workflowsPath).toBe(join(tempHomePath, '.gemini/forge/workflows'));
     });
 
     it('removes the legacy forge-agent file on reinstall', async () => {
@@ -158,31 +239,32 @@ describe('CLI Smoke Tests - Installer Flow', () => {
       await mkdir(join(tempHomePath, '.copilot/agents'), { recursive: true });
       await writeFile(legacyAgentPath, 'legacy agent', 'utf8');
 
-      await runCLI([], tempRepoPath);
+      await runCLI([]);
 
       expect(await fileExists(legacyAgentPath)).toBe(false);
     });
 
     it('runs the installed bundled runtime without extra npm installs', async () => {
-      await runCLI([], tempRepoPath);
+      await runCLI([]);
 
-      const bundledRuntimePath = join(tempHomePath, '.copilot/forge/bin/forge.mjs');
+      const bundledRuntimePath = join(tempHomePath, '.codex/forge/bin/forge.mjs');
       const { stdout, exitCode } = await execa('node', [bundledRuntimePath, '--help'], {
         cwd: tempRepoPath,
         env: {
           ...process.env,
           HOME: tempHomePath,
+          FORGE_SKIP_SELF_REFRESH: '1',
         },
       });
 
       expect(exitCode).toBe(0);
       expect(stdout).toContain('Usage: forge');
-      expect(stdout).toContain('Install the Forge Copilot runtime into ~/.copilot');
+      expect(stdout).toContain('Install Forge assistant assets for Copilot, Claude, Codex, and Gemini');
     });
 
     it('shows installer detail lines only in verbose mode', async () => {
       const defaultRun = await runCLI([]);
-      await rm(tempHomePath, { recursive: true, force: true });
+      await safeRm(tempHomePath);
       tempHomePath = await mkdtemp(join(tmpdir(), 'forge-home-test-'));
       const verboseRun = await runCLI(['--verbose']);
 
@@ -190,7 +272,45 @@ describe('CLI Smoke Tests - Installer Flow', () => {
       expect(defaultRun.stdout).not.toContain('updated manifest');
       expect(verboseRun.stdout).toContain('installed bundled runtime to');
       expect(verboseRun.stdout).toContain('bundled tool entry:');
-    });
+    }, 20000);
+  });
+
+  describe('explicit install selection', () => {
+    it('installs only the requested runtime assets', async () => {
+      const cases = [
+        {
+          assistant: 'copilot',
+          expected: (homePath: string) => join(homePath, '.copilot/agents/forge-discussion-analyzer.agent.md'),
+          unexpected: (homePath: string) => join(homePath, '.claude/commands/forge/discussion-analyzer.md'),
+        },
+        {
+          assistant: 'claude',
+          expected: (homePath: string) => join(homePath, '.claude/commands/forge/discussion-analyzer.md'),
+          unexpected: (homePath: string) => join(homePath, '.codex/skills/forge-discussion-analyzer/SKILL.md'),
+        },
+        {
+          assistant: 'codex',
+          expected: (homePath: string) => join(homePath, '.codex/skills/forge-discussion-analyzer/SKILL.md'),
+          unexpected: (homePath: string) => join(homePath, '.gemini/commands/forge/discussion-analyzer.toml'),
+        },
+        {
+          assistant: 'gemini',
+          expected: (homePath: string) => join(homePath, '.gemini/commands/forge/discussion-analyzer.toml'),
+          unexpected: (homePath: string) => join(homePath, '.copilot/agents/forge-discussion-analyzer.agent.md'),
+        },
+      ] as const;
+
+      for (const testCase of cases) {
+        await resetTempPaths();
+
+        const { exitCode, stdout } = await runCLI(['--assistants', testCase.assistant]);
+
+        expect(exitCode).toBe(0);
+        expect(stdout).toContain(`✅ ${testCase.assistant}`);
+        expect(await fileExists(testCase.expected(tempHomePath))).toBe(true);
+        expect(await fileExists(testCase.unexpected(tempHomePath))).toBe(false);
+      }
+    }, 20000);
   });
 
   describe('help surface', () => {
@@ -198,77 +318,15 @@ describe('CLI Smoke Tests - Installer Flow', () => {
       const { stdout } = await runCLI(['--help']);
 
       expect(stdout).toContain('Usage: forge');
-      expect(stdout).toContain('Install the Forge Copilot runtime into ~/.copilot');
+      expect(stdout).toContain('Install Forge assistant assets for Copilot, Claude, Codex, and Gemini');
       expect(stdout).toContain('--run <analyzer>');
-      expect(stdout).not.toContain('--assistants <ids>');
+      expect(stdout).toContain('--assistants <targets>');
       expect(stdout).not.toContain('--yes');
       expect(stdout).not.toContain('bootstrap');
       expect(stdout).not.toContain('forge analyze');
       expect(stdout).not.toContain('plan');
       expect(stdout).not.toContain('install-assistants');
       expect(stdout).not.toContain('install-copilot');
-    });
-  });
-
-  describe('discussion analyzer runtime', () => {
-    it('runs forge-discussion-analyzer from prepared sidecar artifacts', async () => {
-      const analysisDir = join(tempRepoPath, '.forge/discussions/analysis');
-      await mkdir(analysisDir, { recursive: true });
-      await writeFile(
-        join(analysisDir, 'latest.json'),
-        JSON.stringify({
-          version: '1.0',
-          id: 'prepared-run',
-          sourceRunId: 'fetch-run',
-          timestamp: '2026-03-03T10:00:00.000Z',
-          repository: {
-            owner: 'ajitgunturi',
-            name: 'forge',
-            remoteUrl: 'https://github.com/ajitgunturi/forge.git',
-          },
-          filters: {
-            limit: 25,
-          },
-          totals: {
-            discussions: 1,
-            statuses: { unresolved: 1 },
-            kinds: { consultation: 1 },
-            categories: { Ideas: 1 },
-          },
-          records: [
-            {
-              number: 101,
-              title: 'Patterns in support',
-              url: 'https://github.com/ajitgunturi/forge/discussions/101',
-              category: 'Ideas',
-              categorySlug: 'ideas',
-              createdAt: '2026-03-03T08:00:00.000Z',
-              status: 'unresolved',
-              kind: 'consultation',
-              issue: 'Users repeatedly ask about authentication setup and filtering.',
-              resolution: 'No clear resolution is recorded yet.',
-              keyContext: ['authentication setup', 'discussion filtering'],
-              actionItems: ['Confirm current owner'],
-              updatedAt: '2026-03-03T09:00:00.000Z',
-            },
-          ],
-        }, null, 2),
-        'utf8'
-      );
-
-      const { exitCode, stdout } = await runCLI([
-        '--run',
-        'forge-discussion-analyzer',
-        '--question',
-        'What recurring patterns are visible in support discussions?',
-      ]);
-
-      expect(exitCode).toBe(0);
-      expect(stdout).toContain('GitHub Discussions Digest');
-      expect(stdout).toContain('## Category Summary');
-      expect(stdout).toContain('## Ideas');
-      expect(stdout).toContain('Pattern Analysis');
-      expect(stdout).toContain('Patterns in support');
     });
   });
 
@@ -295,14 +353,28 @@ describe('CLI Smoke Tests - Installer Flow', () => {
 
       try {
         await execa('npm', ['init', '-y'], { cwd: installPath });
-        await execa('npm', ['install', tarballPath], { cwd: installPath });
+        const npmCachePath = await mkdtemp(join(tmpdir(), 'forge-packed-cache-'));
+        await execa('npm', ['install', tarballPath], {
+          cwd: installPath,
+          env: {
+            ...process.env,
+            npm_config_cache: npmCachePath,
+          },
+        });
 
         const forgeBin = join(installPath, 'node_modules', '.bin', 'forge');
-        const { stdout, exitCode } = await execa(forgeBin, ['--help'], { cwd: installPath, timeout: 15000 });
+        const { stdout, exitCode } = await execa(forgeBin, ['--help'], {
+          cwd: installPath,
+          timeout: 15000,
+          env: {
+            ...process.env,
+            FORGE_SKIP_SELF_REFRESH: '1',
+          },
+        });
 
         expect(exitCode).toBe(0);
         expect(stdout).toContain('Usage: forge');
-        expect(stdout).toContain('Install the Forge Copilot runtime into ~/.copilot');
+        expect(stdout).toContain('Install Forge assistant assets for Copilot, Claude, Codex, and Gemini');
 
         const installRun = await execa(forgeBin, [], {
           cwd: installPath,
@@ -310,18 +382,26 @@ describe('CLI Smoke Tests - Installer Flow', () => {
           env: {
             ...process.env,
             HOME: packedHomePath,
+            FORGE_SKIP_SELF_REFRESH: '1',
           },
         });
 
         expect(installRun.exitCode).toBe(0);
-        expect(installRun.stdout).toContain(`Installing Forge Copilot runtime to ${join(packedHomePath, '.copilot')}`);
-        expect(await fileExists(join(packedHomePath, '.copilot/forge/node_modules'))).toBe(true);
         expect(await fileExists(join(packedHomePath, '.copilot/agents/forge-discussion-analyzer.agent.md'))).toBe(true);
+        expect(await fileExists(join(packedHomePath, '.claude/commands/forge/discussion-analyzer.md'))).toBe(true);
+        expect(await fileExists(join(packedHomePath, '.codex/skills/forge-discussion-analyzer/SKILL.md'))).toBe(true);
+        expect(await fileExists(join(packedHomePath, '.gemini/commands/forge/discussion-analyzer.toml'))).toBe(true);
+        expect(await fileExists(join(installPath, '.codex'))).toBe(false);
+        expect(await fileExists(join(installPath, '.gemini'))).toBe(false);
       } finally {
-        await rm(installPath, { recursive: true, force: true });
-        await rm(packedHomePath, { recursive: true, force: true });
-        await rm(tarballPath, { force: true });
+        await safeRm(installPath);
+        await safeRm(packedHomePath);
+        await safeRm(tarballPath);
       }
     }, 20000);
   });
 });
+
+async function safeRm(targetPath: string): Promise<void> {
+  await rm(targetPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+}

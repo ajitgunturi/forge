@@ -3,20 +3,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GitHubTokenRequiredError } from '../../../src/lib/errors.js';
-import { createNewMetadata, writeMetadata } from '../../../src/services/metadata.js';
-import { deriveSidecarContext } from '../../../src/services/sidecar.js';
-import { loadLatestDiscussionRun, persistDiscussionRun } from '../../../src/services/discussions/artifacts.js';
 import { runDiscussionAnalyzer } from '../../../src/services/discussions/analyze.js';
 import { resolveGitHubToken } from '../../../src/services/discussions/auth.js';
 import { fetchGitHubDiscussions } from '../../../src/services/discussions/fetch.js';
 import { analyzeDiscussionRequestIntent } from '../../../src/services/discussions/request-intent.js';
 import * as discussionRunService from '../../../src/services/discussions/run.js';
-import { loadPreferredDiscussionCategory, savePreferredDiscussionCategory } from '../../../src/services/discussions/preferences.js';
 import {
-  describeDiscussionFilters,
   normalizeDiscussionFilters,
 } from '../../../src/services/discussions/filters.js';
-import { buildPreparedDiscussionDigest, persistPreparedDiscussionDigest } from '../../../src/services/discussions/prepare.js';
+import { buildPreparedDiscussionDigest } from '../../../src/services/discussions/prepare.js';
 
 describe('Discussions services', () => {
   let tempDir: string;
@@ -31,73 +26,9 @@ describe('Discussions services', () => {
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it('persists discussion runs and updates the latest pointer', async () => {
-    const context = deriveSidecarContext(tempDir);
-    const filters = normalizeDiscussionFilters({ when: 'today', limit: 10 });
-
-    await writeMetadata(context.metadataPath, createNewMetadata());
-    await persistDiscussionRun(context, {
-      version: '1.0',
-      id: '2026-03-03T10-00-00-000Z',
-      timestamp: '2026-03-03T10:00:00.000Z',
-      repository: {
-        owner: 'ajitgunturi',
-        name: 'forge',
-        remoteUrl: 'https://github.com/ajitgunturi/forge.git',
-      },
-      filters,
-      pageInfo: {
-        hasNextPage: false,
-        endCursor: null,
-        fetchedPages: 1,
-      },
-      discussionCount: 1,
-      discussions: [
-        {
-          id: 'D_1',
-          number: 12,
-          title: 'Add repo sync',
-          url: 'https://github.com/ajitgunturi/forge/discussions/12',
-          createdAt: '2026-03-03T08:00:00.000Z',
-          updatedAt: '2026-03-03T09:00:00.000Z',
-          answerChosenAt: null,
-          author: 'ajitg',
-          category: {
-            id: 'cat1',
-            name: 'Ideas',
-            slug: 'ideas',
-          },
-          bodyText: 'Please add repository sync support.',
-          commentsCount: 2,
-          comments: [
-            {
-              bodyText: 'cc @retina for repo automation details',
-              author: 'maintainer',
-              createdAt: '2026-03-03T08:30:00.000Z',
-            },
-          ],
-          upvoteCount: 5,
-        },
-      ],
-    });
-
-    const latest = await loadLatestDiscussionRun(context);
-    expect(latest?.discussionCount).toBe(1);
-
-    const metadata = JSON.parse(await readFile(context.metadataPath, 'utf8')) as {
-      discussions: {
-        history: Array<Record<string, unknown>>;
-      };
-    };
-    expect(metadata.discussions.history[0]).toEqual({
-      id: '2026-03-03T10-00-00-000Z',
-      timestamp: '2026-03-03T10:00:00.000Z',
-      repository: 'ajitgunturi/forge',
-      discussionCount: 1,
-      artifactPath: 'discussions/runs/2026-03-03T10-00-00-000Z.json',
-      filterDescription: describeDiscussionFilters(filters),
-    });
-  });
+  function mockAnalyzerFetch<T extends { id: string }>(run: T) {
+    return vi.spyOn(discussionRunService, 'runDiscussionFetch').mockResolvedValue(run as never);
+  }
 
   it('resolves GitHub tokens from the environment', () => {
     vi.stubEnv('GH_TOKEN', 'gh-token');
@@ -392,8 +323,7 @@ describe('Discussions services', () => {
     expect(digest.records[0]?.searchableText).toContain('token workaround');
   });
 
-  it('runs forge-discussion-analyzer from prepared sidecar artifacts', async () => {
-    const context = deriveSidecarContext(tempDir);
+  it('runs forge-discussion-analyzer from live fetched discussions and saves a summary artifact', async () => {
     const run = {
       version: '1.0' as const,
       id: '2026-03-03T10-00-00-000Z',
@@ -435,55 +365,54 @@ describe('Discussions services', () => {
       ],
     };
 
-    await writeMetadata(context.metadataPath, createNewMetadata());
-    await persistDiscussionRun(context, run);
-    await persistPreparedDiscussionDigest(tempDir, run);
+    const fetchSpy = mockAnalyzerFetch(run);
 
-    const answer = await runDiscussionAnalyzer({
-      cwd: tempDir,
-      question: 'What recurring patterns are visible in support discussions?',
-    });
+    try {
+      const answer = await runDiscussionAnalyzer({
+        cwd: tempDir,
+        question: 'What recurring patterns are visible in support discussions?',
+      });
 
-    expect(answer).toContain('Pattern Analysis');
-    expect(answer).toContain('Patterns in support');
-    expect(answer).toContain('## Ideas');
-    expect(answer).toContain('**Derived Themes:**');
-    expect(answer).not.toContain('**Kinds:**');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(answer).toContain('Pattern Analysis');
+      expect(answer).toContain('Patterns in support');
+      expect(answer).toContain('## Ideas');
+      expect(answer).toContain('**Derived Themes:**');
+      expect(answer).not.toContain('**Kinds:**');
 
-    const latestAnswerRaw = await readFile(
-      join(tempDir, '.forge/discussions/analysis/latest-answer.json'),
-      'utf8',
-    );
-    const latestAnswer = JSON.parse(latestAnswerRaw) as {
-      question: string;
-      answer: string;
-      digestId: string;
-      decision: {
-        refreshUsed: boolean;
-        refreshReason: string;
+      const latestSummaryRaw = await readFile(
+        join(tempDir, '.forge/discussions/summary/latest.json'),
+        'utf8',
+      );
+      const latestSummary = JSON.parse(latestSummaryRaw) as {
+        question: string;
+        answer: string;
+        sourceRunId: string;
         source: string;
+        discussionCount: number;
       };
-    };
 
-    expect(latestAnswer.question).toBe('What recurring patterns are visible in support discussions?');
-    expect(latestAnswer.answer).toContain('Pattern Analysis');
-    expect(latestAnswer.digestId).toBe('2026-03-03T10-00-00-000Z-analysis');
-    expect(latestAnswer.decision.refreshUsed).toBe(false);
-    expect(latestAnswer.decision.source).toBe('cached-digest');
+      expect(latestSummary.question).toBe('What recurring patterns are visible in support discussions?');
+      expect(latestSummary.answer).toContain('Pattern Analysis');
+      expect(latestSummary.sourceRunId).toBe('2026-03-03T10-00-00-000Z');
+      expect(latestSummary.source).toBe('live-fetch');
+      expect(latestSummary.discussionCount).toBe(1);
 
-    const latestAnswerMarkdown = await readFile(
-      join(tempDir, '.forge/discussions/analysis/latest-answer.md'),
-      'utf8',
-    );
-    expect(latestAnswerMarkdown).toContain('GitHub Discussions Digest');
+      const latestSummaryMarkdown = await readFile(
+        join(tempDir, '.forge/discussions/summary/latest.md'),
+        'utf8',
+      );
+      expect(latestSummaryMarkdown).toContain('GitHub Discussions Digest');
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('reports count-style questions against implicitly refreshed discussion data', async () => {
-    const context = deriveSidecarContext(tempDir);
-    const staleRun = {
+    const run = {
       version: '1.0' as const,
-      id: '2026-03-03T10-00-00-000Z',
-      timestamp: '2026-03-03T10:00:00.000Z',
+      id: '2026-03-03T11-00-00-000Z',
+      timestamp: '2026-03-03T11:00:00.000Z',
       repository: {
         owner: 'ajitgunturi',
         name: 'forge',
@@ -529,20 +458,7 @@ describe('Discussions services', () => {
         },
       ],
     };
-    const freshRun = {
-      ...staleRun,
-      id: '2026-03-03T11-00-00-000Z',
-      timestamp: '2026-03-03T11:00:00.000Z',
-    };
-
-    await writeMetadata(context.metadataPath, createNewMetadata());
-    await persistDiscussionRun(context, staleRun);
-    await persistPreparedDiscussionDigest(tempDir, staleRun);
-
-    const fetchSpy = vi.spyOn(discussionRunService, 'runDiscussionFetch').mockImplementation(async () => {
-      await persistDiscussionRun(context, freshRun);
-      return freshRun;
-    });
+    const fetchSpy = mockAnalyzerFetch(run);
 
     try {
       const answer = await runDiscussionAnalyzer({
@@ -560,7 +476,6 @@ describe('Discussions services', () => {
   });
 
   it('fails fast when the question asks for issues instead of discussions', async () => {
-    const context = deriveSidecarContext(tempDir);
     const run = {
       version: '1.0' as const,
       id: '2026-03-03T10-00-00-000Z',
@@ -596,10 +511,6 @@ describe('Discussions services', () => {
       ],
     };
 
-    await writeMetadata(context.metadataPath, createNewMetadata());
-    await persistDiscussionRun(context, run);
-    await persistPreparedDiscussionDigest(tempDir, run);
-
     await expect(
       runDiscussionAnalyzer({
         cwd: tempDir,
@@ -625,8 +536,8 @@ describe('Discussions services', () => {
 
     expect(currentIntent.refreshMode).toBe('fetch');
     expect(currentIntent.refreshReason).toBe('current-status-question');
-    expect(summaryIntent.refreshMode).toBe('cached');
-    expect(summaryIntent.refreshReason).toBe('cached-local-question');
+    expect(summaryIntent.refreshMode).toBe('fetch');
+    expect(summaryIntent.refreshReason).toBe('default-live-query');
   });
 
   it('parses explicit question windows into normalized filters', () => {
@@ -654,20 +565,6 @@ describe('Discussions services', () => {
     expect(intent.temporalField).toBe('updatedAt');
   });
 
-  it('uses a saved preferred category for current-status prompts', () => {
-    const intent = analyzeDiscussionRequestIntent({
-      question: 'how is it looking?',
-      preferredCategory: {
-        name: 'Customer Support',
-        slug: 'customer-support',
-      },
-    });
-
-    expect(intent.parsedFilters.category).toBe('customer-support');
-    expect(intent.categorySource).toBe('preferred');
-    expect(intent.answerShape.wantsCategoryHealth).toBe(true);
-  });
-
   it('treats "how is customer support looking" as category health analysis', () => {
     const intent = analyzeDiscussionRequestIntent({
       question: 'how is customer support looking?',
@@ -690,27 +587,11 @@ describe('Discussions services', () => {
     expect(intent.answerShape.wantsCategoryHealth).toBe(true);
   });
 
-  it('persists the preferred discussion category', async () => {
-    const context = deriveSidecarContext(tempDir);
-    await writeMetadata(context.metadataPath, createNewMetadata());
-
-    await savePreferredDiscussionCategory(tempDir, {
-      id: 'cat1',
-      name: 'Customer Support',
-      slug: 'customer-support',
-    });
-
-    const preferred = await loadPreferredDiscussionCategory(tempDir);
-    expect(preferred?.slug).toBe('customer-support');
-    expect(preferred?.name).toBe('Customer Support');
-  });
-
-  it('refreshes automatically for current-status questions and records trace metadata', async () => {
-    const context = deriveSidecarContext(tempDir);
-    const staleRun = {
+  it('runs current-status questions as live fetches and saves summary metadata', async () => {
+    const run = {
       version: '1.0' as const,
-      id: '2026-03-02T10-00-00-000Z',
-      timestamp: '2026-03-02T10:00:00.000Z',
+      id: '2026-03-03T10-00-00-000Z',
+      timestamp: '2026-03-03T10:00:00.000Z',
       repository: {
         owner: 'ajitgunturi',
         name: 'forge',
@@ -723,28 +604,6 @@ describe('Discussions services', () => {
         fetchedPages: 1,
       },
       discussionCount: 1,
-      discussions: [
-        {
-          id: 'D_stale',
-          number: 401,
-          title: 'Old support thread',
-          url: 'https://github.com/ajitgunturi/forge/discussions/401',
-          createdAt: '2026-03-01T08:00:00.000Z',
-          updatedAt: '2026-03-02T09:00:00.000Z',
-          answerChosenAt: null,
-          author: 'ajitg',
-          category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
-          bodyText: 'Stale snapshot.',
-          commentsCount: 2,
-          comments: [],
-          upvoteCount: 1,
-        },
-      ],
-    };
-    const freshRun = {
-      ...staleRun,
-      id: '2026-03-03T10-00-00-000Z',
-      timestamp: '2026-03-03T10:00:00.000Z',
       discussions: [
         {
           id: 'D_fresh',
@@ -764,14 +623,7 @@ describe('Discussions services', () => {
       ],
     };
 
-    await writeMetadata(context.metadataPath, createNewMetadata());
-    await persistDiscussionRun(context, staleRun);
-    await persistPreparedDiscussionDigest(tempDir, staleRun);
-
-    const fetchSpy = vi.spyOn(discussionRunService, 'runDiscussionFetch').mockImplementation(async () => {
-      await persistDiscussionRun(context, freshRun);
-      return freshRun;
-    });
+    const fetchSpy = mockAnalyzerFetch(run);
 
     try {
       const answer = await runDiscussionAnalyzer({
@@ -782,29 +634,28 @@ describe('Discussions services', () => {
       expect(answer).toContain('Current support thread');
       expect(answer).toContain('GitHub Discussions Category Health: Customer Support');
 
-      const latestAnswerRaw = await readFile(
-        join(tempDir, '.forge/discussions/analysis/latest-answer.json'),
+      const latestSummaryRaw = await readFile(
+        join(tempDir, '.forge/discussions/summary/latest.json'),
         'utf8',
       );
-      const latestAnswer = JSON.parse(latestAnswerRaw) as {
-        decision: {
-          refreshUsed: boolean;
-          refreshReason: string;
-          source: string;
+      const latestSummary = JSON.parse(latestSummaryRaw) as {
+        source: string;
+        filters: {
+          category?: string;
         };
+        discussionCount: number;
       };
 
       expect(fetchSpy).toHaveBeenCalledTimes(1);
-      expect(latestAnswer.decision.refreshUsed).toBe(true);
-      expect(latestAnswer.decision.refreshReason).toBe('current-status-question');
-      expect(latestAnswer.decision.source).toBe('implicit-refresh');
+      expect(latestSummary.source).toBe('live-fetch');
+      expect(latestSummary.filters.category).toBe('customer support');
+      expect(latestSummary.discussionCount).toBe(1);
     } finally {
       fetchSpy.mockRestore();
     }
   });
 
   it('renders category health answers with totals, status breakdown, unresolved items, and themes', async () => {
-    const context = deriveSidecarContext(tempDir);
     const run = {
       version: '1.0' as const,
       id: '2026-03-03T12-00-00-000Z',
@@ -882,30 +733,32 @@ describe('Discussions services', () => {
       ],
     };
 
-    await writeMetadata(context.metadataPath, createNewMetadata());
-    await persistDiscussionRun(context, run);
-    await persistPreparedDiscussionDigest(tempDir, run);
+    const fetchSpy = mockAnalyzerFetch(run);
 
-    const answer = await runDiscussionAnalyzer({
-      cwd: tempDir,
-      question: 'how is customer support looking?',
-      refreshAnalysis: true,
-    });
+    try {
+      const answer = await runDiscussionAnalyzer({
+        cwd: tempDir,
+        question: 'how is customer support looking?',
+        refreshAnalysis: true,
+      });
 
-    expect(answer).toContain('GitHub Discussions Category Health: Customer Support');
-    expect(answer).toContain('**Total Discussions:** 3');
-    expect(answer).toContain('## Status Breakdown');
-    expect(answer).toContain('- unresolved: 1');
-    expect(answer).toContain('- blocked: 1');
-    expect(answer).toContain('## Unresolved And Blocked Discussions');
-    expect(answer).toContain('Login outage');
-    expect(answer).toContain('Provisioning stuck');
-    expect(answer).toContain('## Major Themes');
-    expect(answer).not.toContain('**Kind:**');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(answer).toContain('GitHub Discussions Category Health: Customer Support');
+      expect(answer).toContain('**Total Discussions:** 3');
+      expect(answer).toContain('## Status Breakdown');
+      expect(answer).toContain('- unresolved: 1');
+      expect(answer).toContain('- blocked: 1');
+      expect(answer).toContain('## Unresolved And Blocked Discussions');
+      expect(answer).toContain('Login outage');
+      expect(answer).toContain('Provisioning stuck');
+      expect(answer).toContain('## Major Themes');
+      expect(answer).not.toContain('**Kind:**');
+    } finally {
+      fetchSpy.mockRestore();
+    }
   });
 
   it('does not keyword-trim an explicitly scoped category health result set', async () => {
-    const context = deriveSidecarContext(tempDir);
     const run = {
       version: '1.0' as const,
       id: '2026-03-03T13-00-00-000Z',
@@ -971,19 +824,94 @@ describe('Discussions services', () => {
       ],
     };
 
-    await writeMetadata(context.metadataPath, createNewMetadata());
-    await persistDiscussionRun(context, run);
-    await persistPreparedDiscussionDigest(tempDir, run);
+    const fetchSpy = mockAnalyzerFetch(run);
 
-    const answer = await runDiscussionAnalyzer({
-      cwd: tempDir,
-      question: 'how is customer support doing in the last 1 week',
-      refreshAnalysis: true,
-    });
+    try {
+      const answer = await runDiscussionAnalyzer({
+        cwd: tempDir,
+        question: 'how is customer support doing in the last 1 week',
+        refreshAnalysis: true,
+      });
 
-    expect(answer).toContain('**Total Discussions:** 3');
-    expect(answer).toContain('Login outage');
-    expect(answer).toContain('Billing question');
-    expect(answer).toContain('Provisioning stuck');
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(answer).toContain('**Total Discussions:** 3');
+      expect(answer).toContain('Login outage');
+      expect(answer).toContain('Billing question');
+      expect(answer).toContain('Provisioning stuck');
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('does not truncate grouped weekly summaries to the first 12 discussions', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-03-03T12:00:00.000Z'));
+
+    const createdDates = [
+      '2026-02-24T08:00:00.000Z',
+      '2026-02-24T09:00:00.000Z',
+      '2026-02-25T08:00:00.000Z',
+      '2026-02-25T09:00:00.000Z',
+      '2026-02-26T08:00:00.000Z',
+      '2026-02-26T09:00:00.000Z',
+      '2026-02-27T08:00:00.000Z',
+      '2026-02-27T09:00:00.000Z',
+      '2026-02-28T08:00:00.000Z',
+      '2026-03-01T08:00:00.000Z',
+      '2026-03-01T09:00:00.000Z',
+      '2026-03-02T08:00:00.000Z',
+      '2026-03-03T08:00:00.000Z',
+    ];
+    const discussions = Array.from({ length: 13 }, (_, index) => ({
+      id: `D_${700 + index}`,
+      number: 700 + index,
+      title: `Customer Support Thread ${index + 1}`,
+      url: `https://github.com/ajitgunturi/forge/discussions/${700 + index}`,
+      createdAt: createdDates[index]!,
+      updatedAt: createdDates[index]!.replace('08:00:00.000Z', '09:00:00.000Z').replace('09:00:00.000Z', '10:00:00.000Z'),
+      answerChosenAt: null,
+      author: 'ajitg',
+      category: { id: 'cat1', name: 'Customer Support', slug: 'customer-support' },
+      bodyText: `Support discussion ${index + 1}.`,
+      commentsCount: 2,
+      comments: [],
+      upvoteCount: 1,
+    }));
+
+    const run = {
+      version: '1.0' as const,
+      id: '2026-03-03T14-00-00-000Z',
+      timestamp: '2026-03-03T14:00:00.000Z',
+      repository: {
+        owner: 'ajitgunturi',
+        name: 'forge',
+        remoteUrl: 'https://github.com/ajitgunturi/forge.git',
+      },
+      filters: normalizeDiscussionFilters({ when: 'last-week', limit: 100 }),
+      pageInfo: {
+        hasNextPage: false,
+        endCursor: null,
+        fetchedPages: 1,
+      },
+      discussionCount: discussions.length,
+      discussions,
+    };
+
+    const fetchSpy = mockAnalyzerFetch(run);
+
+    try {
+      const answer = await runDiscussionAnalyzer({
+        cwd: tempDir,
+        question: 'show me all discussions from the last week grouped by category, including all categories',
+        refreshAnalysis: true,
+      });
+
+      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      expect(answer).toContain('| Customer Support | 13 |');
+      expect(answer).toContain('### Customer Support Thread 13 (#712)');
+    } finally {
+      fetchSpy.mockRestore();
+      vi.useRealTimers();
+    }
   });
 });

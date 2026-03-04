@@ -1,5 +1,3 @@
-import path from 'node:path';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import {
   DiscussionKind,
   DiscussionRun,
@@ -7,56 +5,6 @@ import {
   PreparedDiscussionDigest,
   PreparedDiscussionRecord,
 } from '../../contracts/discussions.js';
-import { DISCUSSION_ANALYSIS_SUBDIR, LATEST_DISCUSSION_ANALYSIS_POINTER } from '../../config/analysis.js';
-import { DiscussionArtifactsRequiredError } from '../../lib/errors.js';
-import { loadLatestDiscussionRun } from './artifacts.js';
-import { deriveSidecarContext, initializeSidecar } from '../sidecar.js';
-
-export async function prepareLatestDiscussionDigest(cwd: string): Promise<PreparedDiscussionDigest> {
-  const sidecar = await initializeSidecar(cwd);
-  const latestRun = await loadLatestDiscussionRun(sidecar);
-
-  if (!latestRun) {
-    throw new DiscussionArtifactsRequiredError();
-  }
-
-  return persistPreparedDiscussionDigest(sidecar.repoPath, latestRun);
-}
-
-export async function loadLatestPreparedDiscussionDigest(cwd: string): Promise<PreparedDiscussionDigest | null> {
-  const context = deriveSidecarContext(cwd);
-  const paths = deriveDiscussionAnalysisPaths(context.sidecarPath);
-
-  try {
-    const raw = await readFile(paths.latest, 'utf8');
-    return JSON.parse(raw) as PreparedDiscussionDigest;
-  } catch {
-    return null;
-  }
-}
-
-export async function persistPreparedDiscussionDigest(
-  repoRoot: string,
-  run: DiscussionRun
-): Promise<PreparedDiscussionDigest> {
-  const context = deriveSidecarContext(repoRoot);
-  const digest = buildPreparedDiscussionDigest(run);
-  const paths = deriveDiscussionAnalysisPaths(context.sidecarPath);
-
-  await mkdir(paths.runs, { recursive: true });
-
-  const jsonPath = path.join(paths.runs, `${digest.id}.json`);
-  const markdownPath = path.join(paths.runs, `${digest.id}.md`);
-  const payload = JSON.stringify(digest, null, 2);
-  const markdown = preparedDigestToMarkdown(digest);
-
-  await writeFile(jsonPath, payload, 'utf8');
-  await writeFile(markdownPath, markdown, 'utf8');
-  await writeFile(paths.latest, payload, 'utf8');
-  await writeFile(paths.latestMarkdown, markdown, 'utf8');
-
-  return digest;
-}
 
 export function buildPreparedDiscussionDigest(run: DiscussionRun): PreparedDiscussionDigest {
   const records = run.discussions.map((discussion) => buildPreparedRecord(discussion));
@@ -75,40 +23,6 @@ export function buildPreparedDiscussionDigest(run: DiscussionRun): PreparedDiscu
       categories: countBy(records.map((record) => record.category)),
     },
     records,
-  };
-}
-
-export function preparedDigestToMarkdown(digest: PreparedDiscussionDigest): string {
-  const lines: string[] = [
-    `# Prepared Discussion Digest: ${digest.repository.owner}/${digest.repository.name}`,
-    '',
-    `**Digest ID:** \`${digest.id}\`  `,
-    `**Source Run:** \`${digest.sourceRunId}\`  `,
-    `**Discussion Count:** ${digest.totals.discussions}  `,
-    '',
-    '## Records',
-    '',
-  ];
-
-  for (const record of digest.records) {
-    lines.push(`### #${record.number}: ${record.title}`);
-    lines.push(`- Status: ${record.status}`);
-    lines.push(`- Kind: ${record.kind}`);
-    lines.push(`- Category: ${record.category}`);
-    lines.push(`- Resolution: ${record.resolution}`);
-    lines.push('');
-  }
-
-  return lines.join('\n').trim();
-}
-
-function deriveDiscussionAnalysisPaths(sidecarPath: string) {
-  const base = path.join(sidecarPath, 'discussions', DISCUSSION_ANALYSIS_SUBDIR);
-  return {
-    base,
-    runs: path.join(base, 'runs'),
-    latest: path.join(base, LATEST_DISCUSSION_ANALYSIS_POINTER),
-    latestMarkdown: path.join(base, 'latest.md'),
   };
 }
 

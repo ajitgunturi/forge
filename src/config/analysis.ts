@@ -27,9 +27,3 @@ export const LATEST_RUN_POINTER = 'latest.json';
  * Returns the relative path to the analysis subtree from the sidecar root.
  */
 export const ANALYSIS_PATH = ANALYSIS_SUBDIR;
-
-export const DISCUSSIONS_SUBDIR = 'discussions';
-export const DISCUSSION_RUNS_SUBDIR = 'runs';
-export const LATEST_DISCUSSIONS_POINTER = 'latest.json';
-export const DISCUSSION_ANALYSIS_SUBDIR = 'analysis';
-export const LATEST_DISCUSSION_ANALYSIS_POINTER = 'latest.json';

@@ -1,6 +1,6 @@
 import os from 'node:os';
 import path from 'node:path';
-import { AssistantAdapter } from './registry.js';
+import { AssistantAdapter, AssistantSupplementalAsset } from './registry.js';
 import { AssistantId, AssistantAvailability, AssistantInstallLayout } from '../../contracts/assistants.js';
 import { SummonableEntry } from '../../contracts/summonable-entry.js';
 import { entryRenderer } from './render-entry.js';
@@ -43,6 +43,7 @@ export class CopilotAdapter implements AssistantAdapter {
     return {
       rootPath,
       agentsPath: path.join(rootPath, 'agents'),
+      skillsPath: path.join(rootPath, 'skills'),
       runtimePath,
       runtimeEntryPath: path.join(runtimePath, 'bin', 'forge.mjs'),
       metadataPath: path.join(runtimePath, 'forge-file-manifest.json'),
@@ -55,6 +56,16 @@ export class CopilotAdapter implements AssistantAdapter {
    */
   render(entry: SummonableEntry): string {
     return renderCopilotAgent(entry);
+  }
+
+  getSupplementalAssets(cwd: string, entry: SummonableEntry): AssistantSupplementalAsset[] {
+    const layout = this.resolveInstallLayout(cwd);
+    return [
+      {
+        targetPath: path.join(layout.skillsPath ?? path.join(layout.rootPath, 'skills'), entry.id, 'SKILL.md'),
+        content: renderCopilotSkill(entry),
+      },
+    ];
   }
 
   /**
@@ -93,13 +104,7 @@ function renderCopilotAgent(entry: SummonableEntry): string {
     '---',
     `name: ${name}`,
     `description: ${description}`,
-    'tools:',
-    '  - read_file',
-    '  - run_in_terminal',
-    '  - fetch_webpage',
-    '  - grep_search',
-    '  - file_search',
-    '  - semantic_search',
+    'tools: ["bash", "view"]',
     'color: blue',
     '---',
     '',
@@ -109,6 +114,28 @@ function renderCopilotAgent(entry: SummonableEntry): string {
     '',
     FORGE_USER_START,
     '<!-- Add team- or user-specific Copilot instructions below this line. -->',
+    '<!-- Keep your custom instructions outside Forge managed markers so updates preserve them. -->',
+    FORGE_USER_END,
+  ].join('\n');
+}
+
+function renderCopilotSkill(entry: SummonableEntry): string {
+  const description = sanitizePlainScalar(entry.purpose);
+  const name = sanitizePlainScalar(entry.id);
+  const body = entryRenderer.renderSkillMarkdown(entry);
+
+  return [
+    '---',
+    `name: ${name}`,
+    `description: ${description}`,
+    '---',
+    '',
+    FORGE_MANAGED_START,
+    body,
+    FORGE_MANAGED_END,
+    '',
+    FORGE_USER_START,
+    '<!-- Add team- or user-specific Copilot skill instructions below this line. -->',
     '<!-- Keep your custom instructions outside Forge managed markers so updates preserve them. -->',
     FORGE_USER_END,
   ].join('\n');

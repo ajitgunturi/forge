@@ -14,10 +14,10 @@ export class EntryRenderer {
    * @param entry The summonable entry model.
    * @returns A rendered Markdown string.
    */
-  renderToMarkdown(entry: SummonableEntry): string {
+  renderToMarkdown(entry: SummonableEntry, options: { title?: string } = {}): string {
     const lines: string[] = [];
 
-    lines.push(`# ${entry.displayName}`);
+    lines.push(`# ${options.title ?? entry.displayName}`);
     lines.push('');
     lines.push(entry.purpose);
     lines.push('');
@@ -66,6 +66,41 @@ export class EntryRenderer {
         lines.push(`- ${p}`);
       }
       lines.push('');
+    }
+
+    return lines.join('\n').trim();
+  }
+
+  renderSkillMarkdown(entry: SummonableEntry): string {
+    const lines: string[] = [];
+    const instructionLines = entry.instructions
+      .split('\n')
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((line) => line.replace(/^- /, '').trim());
+
+    lines.push(`Use this skill when the user wants to ${entry.purpose.charAt(0).toLowerCase()}${entry.purpose.slice(1)}`);
+    lines.push('');
+    lines.push('Follow these instructions:');
+    for (const line of instructionLines) {
+      lines.push(`- ${line}`);
+    }
+
+    if (entry.commands.length > 0) {
+      lines.push('');
+      lines.push('Preferred command flow:');
+      for (const command of entry.commands) {
+        lines.push(`- ${command.description}`);
+        lines.push(`  Command: \`${command.usage}\``);
+      }
+    }
+
+    if (entry.principles.length > 0) {
+      lines.push('');
+      lines.push('Constraints:');
+      for (const principle of entry.principles) {
+        lines.push(`- ${principle}`);
+      }
     }
 
     return lines.join('\n').trim();

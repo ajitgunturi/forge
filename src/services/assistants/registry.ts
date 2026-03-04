@@ -11,6 +11,11 @@ import { geminiAdapter } from './gemini.js';
  * Each supported assistant (Claude, Copilot, etc.) provides an adapter that handles
  * native rendering, installation targets, and environmental availability checks.
  */
+export interface AssistantSupplementalAsset {
+  targetPath: string;
+  content: string;
+}
+
 export interface AssistantAdapter {
   id: AssistantId;
   name: string;
@@ -27,6 +32,18 @@ export interface AssistantAdapter {
   
   /** Renders the assistant-agnostic entry into the native format for this assistant */
   render(entry: SummonableEntry): string;
+
+  /** Optional supplemental assets (for example, skills) that should be installed alongside the primary entry */
+  getSupplementalAssets?(cwd: string, entry: SummonableEntry): AssistantSupplementalAsset[];
+
+  /** Optional legacy asset files whose preserved user content should seed the new asset path on migration */
+  getAssetMigrationSources?(cwd: string, entry: SummonableEntry): Record<string, string[]>;
+
+  /** Optional obsolete assets that should be removed after a successful install */
+  getObsoleteAssetPaths?(cwd: string, entry: SummonableEntry): string[];
+
+  /** Optional empty directories that should be pruned after a successful install */
+  getObsoleteDirectoryPaths?(cwd: string): string[];
 }
 
 /**

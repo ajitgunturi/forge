@@ -1,25 +1,56 @@
 import os from 'node:os';
+import path from 'node:path';
+import readline from 'node:readline/promises';
 import { assistantInstallService } from '../services/assistants/install.js';
 import { AssistantId, AssistantOperationResult } from '../contracts/assistants.js';
+import { forgeDiscussionAnalyzerEntry } from '../services/assistants/summonables.js';
+import { getExposedSummonableName } from '../services/assistants/exposure.js';
+
+const DEFAULT_ASSISTANTS: AssistantId[] = ['copilot', 'claude', 'codex', 'gemini'];
+const INTERACTIVE_CHOICES: Array<{
+  choice: string;
+  label: string;
+  pathLabel: string;
+  assistants: AssistantId[];
+}> = [
+  { choice: '1', label: 'GitHub Copilot', pathLabel: '~/.copilot', assistants: ['copilot'] },
+  { choice: '2', label: 'Claude Code', pathLabel: '~/.claude', assistants: ['claude'] },
+  { choice: '3', label: 'Gemini', pathLabel: '~/.gemini', assistants: ['gemini'] },
+  { choice: '4', label: 'Codex', pathLabel: '~/.codex', assistants: ['codex'] },
+  { choice: '5', label: 'All', pathLabel: 'install every supported runtime', assistants: DEFAULT_ASSISTANTS },
+];
+
+type InstallStyling = {
+  bold(value: string): string;
+  cyan(value: string): string;
+  yellow(value: string): string;
+  green(value: string): string;
+  dim(value: string): string;
+};
 
 /**
- * Handles the CLI surface for installing the currently exposed Copilot summonables.
- *
- * Other assistant adapters remain in the codebase but are not exposed in the user-facing CLI yet.
+ * Handles the CLI surface for installing the currently exposed Forge assistant assets.
  */
-export async function installAssistantsCommand(cwd: string, options: { verbose?: boolean } = {}): Promise<void> {
+export async function installAssistantsCommand(
+  cwd: string,
+  options: { verbose?: boolean; assistants?: AssistantId[]; version?: string } = {},
+): Promise<void> {
   try {
-    const requestedAssistants: AssistantId[] = ['copilot'];
-    const copilotRoot = `${os.homedir()}/.copilot`;
-
-    console.log(`Installing Forge Copilot runtime to ${copilotRoot}...`);
+    const interactive = !options.assistants && process.stdin.isTTY && process.stdout.isTTY;
+    const styling = createInstallStyling(interactive);
+    const requestedAssistants = options.assistants ?? await resolveAssistantSelection(options.version, styling);
+    printInstallTargets(requestedAssistants, cwd, { interactive, styling });
 
     const results = await assistantInstallService.installDefaultSummonables(cwd, requestedAssistants);
 
     let hasSuccess = false;
     for (const result of results) {
-      const statusIcon = getStatusIcon(result.status);
-      console.log(`${statusIcon} ${result.id.padEnd(10)}: ${result.message}`);
+      if (interactive) {
+        printInteractiveOperationResult(result, styling);
+      } else {
+        const statusIcon = getStatusIcon(result.status);
+        console.log(`${statusIcon} ${result.id.padEnd(10)}: ${result.message}`);
+      }
       if (options.verbose) {
         for (const detail of result.details ?? []) {
           console.log(`   · ${detail}`);
@@ -31,13 +62,259 @@ export async function installAssistantsCommand(cwd: string, options: { verbose?:
     }
     
     if (hasSuccess) {
-      console.log('You can now use Copilot /agent with forge-discussion-analyzer.');
+      const successMessage = buildSuccessMessage(requestedAssistants);
+      console.log(interactive ? `\n${styling.green('Done!')} ${successMessage}` : successMessage);
     } else {
-      console.log('\nCopilot summonables were not installed or updated. Check the status messages above.');
+      console.log('\nForge assistant assets were not installed or updated. Check the status messages above.');
     }
   } catch (error) {
     throw error;
   }
+}
+
+async function resolveAssistantSelection(version: string | undefined, styling: InstallStyling): Promise<AssistantId[]> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    return DEFAULT_ASSISTANTS;
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    console.log(renderInteractiveInstallerScreen(version ?? '0.0.0', styling));
+    const answer = (await rl.question(styling.bold('  Choice [5]: '))).trim().toLowerCase();
+    const selection = resolveInteractiveAssistantChoice(answer);
+
+    if (selection) {
+      return selection;
+    }
+
+    console.log(styling.yellow('\n  Unknown choice. Defaulting to All.\n'));
+    return DEFAULT_ASSISTANTS;
+  } finally {
+    rl.close();
+  }
+}
+
+function printInstallTargets(
+  assistantIds: AssistantId[],
+  cwd: string = process.cwd(),
+  options: { interactive?: boolean; styling?: InstallStyling } = {},
+): void {
+  if (options.interactive && options.styling) {
+    console.log(buildInteractiveInstallSummary(assistantIds, options.styling));
+    return;
+  }
+
+  if (assistantIds.includes('copilot')) {
+    console.log(`Installing Forge Copilot runtime to ${os.homedir()}/.copilot...`);
+  }
+
+  if (assistantIds.includes('claude')) {
+    console.log(`Installing Forge Claude assets to ${os.homedir()}/.claude...`);
+  }
+
+  if (assistantIds.includes('codex')) {
+    console.log(`Installing Forge Codex assets to ${path.join(os.homedir(), '.codex')}...`);
+  }
+
+  if (assistantIds.includes('gemini')) {
+    console.log(`Installing Forge Gemini assets to ${path.join(os.homedir(), '.gemini')}...`);
+  }
+}
+
+function buildSuccessMessage(assistantIds: AssistantId[]): string {
+  const notes: string[] = [];
+
+  if (assistantIds.includes('copilot')) {
+    notes.push('Copilot can use `/agent forge-discussion-analyzer`, and gh copilot can delegate to the matching `forge-discussion-analyzer` skill');
+  }
+
+  if (assistantIds.includes('claude')) {
+    notes.push(`Claude can use the installed ${getExposedSummonableName('claude', 'command', forgeDiscussionAnalyzerEntry)} command`);
+  }
+
+  if (assistantIds.includes('codex')) {
+    notes.push(`Codex can use the installed $${getExposedSummonableName('codex', 'skill', forgeDiscussionAnalyzerEntry)} skill`);
+  }
+
+  if (assistantIds.includes('gemini')) {
+    notes.push(`Gemini can use the installed ${getExposedSummonableName('gemini', 'command', forgeDiscussionAnalyzerEntry)} command`);
+  }
+
+  return notes.length > 0
+    ? `${notes.join(', ')}.`
+    : 'Forge assistant assets are ready.';
+}
+
+export function renderInteractiveInstallerScreen(version: string, styling: InstallStyling = createInstallStyling(false)): string {
+  const bannerLines = [
+    '   ███████╗ ██████╗ ██████╗  ██████╗ ███████╗',
+    '   ██╔════╝██╔═══██╗██╔══██╗██╔════╝ ██╔════╝',
+    '   █████╗  ██║   ██║██████╔╝██║  ███╗█████╗  ',
+    '   ██╔══╝  ██║   ██║██╔══██╗██║   ██║██╔══╝  ',
+    '   ██║     ╚██████╔╝██║  ██║╚██████╔╝███████╗',
+    '   ╚═╝      ╚═════╝ ╚═╝  ╚═╝ ╚═════╝ ╚══════╝',
+  ].map((line) => styling.cyan(line));
+
+  const runtimeLines = INTERACTIVE_CHOICES.map((choice) => {
+    if (choice.choice === '5') {
+      return `  ${styling.bold('5)')} ${styling.bold('All')}`;
+    }
+
+    return `  ${styling.bold(`${choice.choice})`)} ${padLabel(choice.label, 15)} ${styling.dim(`(${choice.pathLabel})`)}`;
+  });
+
+  return [
+    '',
+    ...bannerLines,
+    '',
+    `  ${styling.bold(`Forge v${version}`)}`,
+    `  ${styling.dim('Live-fetch GitHub Discussions installer for GitHub Copilot, Claude Code, Gemini, and Codex.')}`,
+    '',
+    `  ${styling.bold('Which runtime(s) would you like to install for?')}`,
+    '',
+    ...runtimeLines,
+    '',
+  ].join('\n');
+}
+
+export function resolveInteractiveAssistantChoice(answer: string): AssistantId[] | null {
+  if (answer === '') {
+    return DEFAULT_ASSISTANTS;
+  }
+
+  const matchedChoice = INTERACTIVE_CHOICES.find((choice) => choice.choice === answer);
+  if (matchedChoice) {
+    return matchedChoice.assistants;
+  }
+
+  switch (answer) {
+    case 'copilot':
+      return ['copilot'];
+    case 'claude':
+      return ['claude'];
+    case 'gemini':
+      return ['gemini'];
+    case 'codex':
+      return ['codex'];
+    case 'all':
+      return DEFAULT_ASSISTANTS;
+    default:
+      return null;
+  }
+}
+
+export function buildInteractiveInstallSummary(
+  assistantIds: AssistantId[],
+  styling: InstallStyling = createInstallStyling(false),
+): string {
+  if (assistantIds.length === DEFAULT_ASSISTANTS.length) {
+    return `\n  ${styling.green('Installing Forge globally')} ${styling.dim('to ~/.copilot, ~/.claude, ~/.gemini, and ~/.codex')}\n`;
+  }
+
+  const selected = assistantIds[0];
+  const destination = getInstallRootLabel(selected);
+  const runtimeLabel = getRuntimeLabel(selected);
+  return `\n  ${styling.green(`Installing for ${runtimeLabel}`)} ${styling.dim(`to ${destination}`)}\n`;
+}
+
+export function buildInteractiveOperationLines(result: AssistantOperationResult): string[] {
+  if (result.status === 'skipped') {
+    return ['Already up to date'];
+  }
+
+  if (result.status !== 'success') {
+    return [result.message];
+  }
+
+  const lines = [...getInteractiveAssetLines(result.id)];
+
+  if (result.details?.some((detail) => detail.includes('wrote VERSION'))) {
+    lines.push('Wrote VERSION');
+  }
+
+  if (result.details?.some((detail) => detail.includes('manifest'))) {
+    lines.push('Wrote file manifest');
+  }
+
+  return lines;
+}
+
+function printInteractiveOperationResult(result: AssistantOperationResult, styling: InstallStyling): void {
+  const icon = result.status === 'failed'
+    ? '✕'
+    : result.status === 'skipped'
+      ? '○'
+      : '✓';
+  const colorize = result.status === 'failed'
+    ? styling.yellow
+    : result.status === 'skipped'
+      ? styling.dim
+      : styling.green;
+
+  const lines = buildInteractiveOperationLines(result);
+  for (const line of lines) {
+    console.log(`  ${colorize(icon)} ${line}`);
+  }
+  console.log('');
+}
+
+function getRuntimeLabel(assistantId: AssistantId): string {
+  switch (assistantId) {
+    case 'copilot':
+      return 'GitHub Copilot';
+    case 'claude':
+      return 'Claude Code';
+    case 'gemini':
+      return 'Gemini';
+    case 'codex':
+      return 'Codex';
+  }
+}
+
+function getInstallRootLabel(assistantId: AssistantId): string {
+  switch (assistantId) {
+    case 'copilot':
+      return '~/.copilot';
+    case 'claude':
+      return '~/.claude';
+    case 'gemini':
+      return '~/.gemini';
+    case 'codex':
+      return '~/.codex';
+  }
+}
+
+function getInteractiveAssetLines(assistantId: AssistantId): string[] {
+  switch (assistantId) {
+    case 'copilot':
+      return ['Installed agent', 'Installed skill', 'Installed Forge runtime'];
+    case 'claude':
+      return ['Installed command', 'Installed agent', 'Installed Forge runtime'];
+    case 'codex':
+      return ['Installed skill', 'Installed agents', 'Installed Forge runtime'];
+    case 'gemini':
+      return ['Installed command', 'Installed agent', 'Installed Forge runtime'];
+  }
+}
+
+function padLabel(value: string, width: number): string {
+  return value.padEnd(width);
+}
+
+function createInstallStyling(enabled: boolean): InstallStyling {
+  const apply = (open: string, close: string, value: string) => enabled ? `${open}${value}${close}` : value;
+
+  return {
+    bold: (value) => apply('\u001B[1m', '\u001B[22m', value),
+    cyan: (value) => apply('\u001B[38;5;45m', '\u001B[39m', value),
+    yellow: (value) => apply('\u001B[38;5;220m', '\u001B[39m', value),
+    green: (value) => apply('\u001B[38;5;84m', '\u001B[39m', value),
+    dim: (value) => apply('\u001B[2m', '\u001B[22m', value),
+  };
 }
 
 /**

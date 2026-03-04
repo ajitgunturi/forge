@@ -10,23 +10,19 @@ export interface DiscussionAnalyzerIntentOptions {
   before?: string;
   category?: string;
   limit?: number;
-  preferredCategory?: {
-    name: string;
-    slug: string;
-  };
 }
 
 export interface DiscussionAnalyzerIntent {
   question: string;
   normalizedQuestion: string;
   scope: 'discussions' | 'issues';
-  refreshMode: 'fetch' | 'rebuild' | 'cached';
+  refreshMode: 'fetch';
   refreshReason:
     | 'explicit-force-refresh'
     | 'explicit-refresh-analysis'
     | 'current-status-question'
     | 'time-scoped-question'
-    | 'cached-local-question';
+    | 'default-live-query';
   parsedFilters: DiscussionFilters;
   temporalField: 'createdAt' | 'updatedAt';
   answerShape: {
@@ -36,7 +32,6 @@ export interface DiscussionAnalyzerIntent {
     wantsCategoryHealth: boolean;
   };
   redirectQuestion?: string;
-  categorySource?: 'explicit' | 'preferred';
 }
 
 export function analyzeDiscussionRequestIntent(
@@ -48,10 +43,7 @@ export function analyzeDiscussionRequestIntent(
 
   const extractedFilters = extractQuestionFilters(question, normalizedQuestion);
   const temporalField = detectTemporalField(normalizedQuestion, extractedFilters);
-  const chosenCategory = options.category ?? extractedFilters.category ?? getPreferredCategoryForQuestion(
-    normalizedQuestion,
-    options.preferredCategory,
-  );
+  const chosenCategory = options.category ?? extractedFilters.category;
   const parsedFilters = normalizeDiscussionFilters({
     when: options.when ?? extractedFilters.when,
     after: options.after ?? extractedFilters.after,
@@ -72,7 +64,7 @@ export function analyzeDiscussionRequestIntent(
     question,
     normalizedQuestion,
     scope,
-    refreshMode: refreshReasonToMode(refreshReason),
+    refreshMode: 'fetch',
     refreshReason,
     parsedFilters,
     temporalField,
@@ -87,7 +79,6 @@ export function analyzeDiscussionRequestIntent(
       wantsCategoryHealth: hasCurrentStatusIntent(normalizedQuestion) && Boolean(parsedFilters.category),
     },
     redirectQuestion: scope === 'issues' ? question.replace(/\bissues?\b/gi, 'discussions') : undefined,
-    categorySource: options.category || extractedFilters.category ? 'explicit' : chosenCategory ? 'preferred' : undefined,
   };
 }
 
@@ -137,19 +128,7 @@ function resolveRefreshReason(input: {
   if (hasExplicitTimeScope(input.normalizedQuestion, input.filters)) {
     return 'time-scoped-question';
   }
-  return 'cached-local-question';
-}
-
-function refreshReasonToMode(
-  reason: DiscussionAnalyzerIntent['refreshReason'],
-): DiscussionAnalyzerIntent['refreshMode'] {
-  if (reason === 'explicit-refresh-analysis') {
-    return 'rebuild';
-  }
-  if (reason === 'cached-local-question') {
-    return 'cached';
-  }
-  return 'fetch';
+  return 'default-live-query';
 }
 
 function hasCurrentStatusIntent(normalizedQuestion: string): boolean {
@@ -285,21 +264,6 @@ function extractCategory(question: string): string | undefined {
   }
 
   return undefined;
-}
-
-function getPreferredCategoryForQuestion(
-  normalizedQuestion: string,
-  preferredCategory?: { name: string; slug: string },
-): string | undefined {
-  if (!preferredCategory) {
-    return undefined;
-  }
-
-  if (!hasCurrentStatusIntent(normalizedQuestion)) {
-    return undefined;
-  }
-
-  return preferredCategory.slug;
 }
 
 function isSpecificCategoryCandidate(value?: string): value is string {

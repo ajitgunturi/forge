@@ -1,8 +1,7 @@
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { assistantRegistry, AssistantAdapter } from './registry.js';
+import { assistantRegistry, AssistantAdapter, AssistantSupplementalAsset } from './registry.js';
 import { AssistantId, AssistantInstallLayout, AssistantOperationResult } from '../../contracts/assistants.js';
 import { SummonableEntry } from '../../contracts/summonable-entry.js';
 import { forgeSummonableEntries } from './summonables.js';
@@ -12,7 +11,6 @@ import {
   writeInstallerRuntimeMetadata,
 } from '../metadata.js';
 import {
-  COPILOT_RUNTIME_ENTRY,
   FORGE_MANAGED_END,
   FORGE_MANAGED_START,
   FORGE_USER_END,
@@ -127,11 +125,16 @@ export class AssistantInstallService {
       }
     }
 
+    const obsoleteDirectories = adapter.getObsoleteDirectoryPaths?.(cwd) ?? [];
+    for (const directoryPath of obsoleteDirectories) {
+      await removeDirectoryIfEmpty(directoryPath);
+    }
+
     if (installedCount === 0 && updatedCount === 0) {
       return {
         id: adapter.id,
         status: 'skipped',
-        message: `${adapter.name} summonables are already up to date (${skippedCount} checked).`,
+        message: `${adapter.name} assistant assets are already up to date (${skippedCount} checked).`,
       };
     }
 
@@ -144,7 +147,7 @@ export class AssistantInstallService {
     return {
       id: adapter.id,
       status: 'success',
-      message: `${adapter.name} summonables ready at ${layout.rootPath} (${segments.join(', ')}).`,
+      message: `${adapter.name} assistant assets ready at ${layout.rootPath} (${segments.join(', ')}).`,
       details: bootstrap,
     };
   }
@@ -160,24 +163,29 @@ export class AssistantInstallService {
       };
     }
 
-    const targetPath = adapter.getInstallTarget(cwd, entry);
-    const content = adapter.render(entry);
+    const primaryAsset: AssistantSupplementalAsset = {
+      targetPath: adapter.getInstallTarget(cwd, entry),
+      content: adapter.render(entry),
+    };
+    const supplementalAssets = adapter.getSupplementalAssets?.(cwd, entry) ?? [];
+    const migrationSources = adapter.getAssetMigrationSources?.(cwd, entry) ?? {};
+    const currentAssetPaths = new Set([primaryAsset.targetPath, ...supplementalAssets.map((asset) => asset.targetPath)]);
+    const obsoleteAssetPaths = (adapter.getObsoleteAssetPaths?.(cwd, entry) ?? []).filter(
+      (assetPath) => !currentAssetPaths.has(assetPath),
+    );
+    const targetPath = primaryAsset.targetPath;
 
     try {
-      // Ensure the directory exists
-      await fs.mkdir(path.dirname(targetPath), { recursive: true });
-
-      // Check if file already exists
-      let existingContent: string | null = null;
-      try {
-        existingContent = await fs.readFile(targetPath, 'utf8');
-      } catch (error) {
-        // File does not exist, which is fine
+      const writeResults = [];
+      for (const asset of [primaryAsset, ...supplementalAssets]) {
+        writeResults.push(await this.writeManagedAsset(adapter, asset, migrationSources[asset.targetPath] ?? []));
       }
 
-      const nextContent = this.mergeManagedContent(adapter, content, existingContent);
+      for (const obsoleteAssetPath of obsoleteAssetPaths) {
+        await fs.rm(obsoleteAssetPath, { recursive: true, force: true });
+      }
 
-      if (existingContent === nextContent) {
+      if (writeResults.every((result) => result.status === 'skipped')) {
         return {
           id: adapter.id,
           status: 'skipped',
@@ -186,15 +194,16 @@ export class AssistantInstallService {
         };
       }
 
-      // Write or update the file
-      await fs.writeFile(targetPath, nextContent, 'utf8');
+      const installedAsset = writeResults.find((result) => result.status === 'installed');
+      const updatedAsset = writeResults.find((result) => result.status === 'updated');
+      const changedAsset = installedAsset ?? updatedAsset ?? writeResults[0];
 
       return {
         id: adapter.id,
         status: 'success',
-        message: existingContent === null
-          ? `installed ${adapter.name} summonables at ${path.dirname(targetPath)}.`
-          : `updated ${adapter.name} summonables at ${path.dirname(targetPath)}.`,
+        message: installedAsset
+          ? `installed ${adapter.name} assistant assets at ${path.dirname(changedAsset.targetPath)}.`
+          : `updated ${adapter.name} assistant assets at ${path.dirname(changedAsset.targetPath)}.`,
         filePath: targetPath,
       };
     } catch (error) {
@@ -206,9 +215,17 @@ export class AssistantInstallService {
     }
   }
 
-  private mergeManagedContent(adapter: AssistantAdapter, renderedContent: string, existingContent: string | null): string {
-    if (adapter.id !== 'copilot' || existingContent === null) {
+  private mergeManagedContent(_adapter: AssistantAdapter, renderedContent: string, existingContent: string | null): string {
+    if (existingContent === null) {
       return renderedContent;
+    }
+
+    if (!renderedContent.includes(FORGE_MANAGED_START) || !renderedContent.includes(FORGE_MANAGED_END)) {
+      return renderedContent;
+    }
+
+    if (requiresFrontmatterMigration(renderedContent, existingContent)) {
+      return migrateLegacyContent(renderedContent, existingContent);
     }
 
     if (existingContent.includes(FORGE_MANAGED_START) && existingContent.includes(FORGE_MANAGED_END)) {
@@ -218,17 +235,67 @@ export class AssistantInstallService {
     return migrateLegacyContent(renderedContent, existingContent);
   }
 
+  private async writeManagedAsset(
+    adapter: AssistantAdapter,
+    asset: AssistantSupplementalAsset,
+    migrationSourcePaths: string[] = [],
+  ): Promise<{ status: 'installed' | 'updated' | 'skipped'; targetPath: string }> {
+    await fs.mkdir(path.dirname(asset.targetPath), { recursive: true });
+
+    let existingContent: string | null = null;
+    let targetExists = true;
+    try {
+      existingContent = await fs.readFile(asset.targetPath, 'utf8');
+    } catch {
+      // File does not exist yet.
+      targetExists = false;
+    }
+
+    if (existingContent === null) {
+      for (const sourcePath of migrationSourcePaths) {
+        try {
+          existingContent = await fs.readFile(sourcePath, 'utf8');
+          break;
+        } catch {
+          // Try the next migration source.
+        }
+      }
+    }
+
+    const nextContent = this.mergeManagedContent(adapter, asset.content, existingContent);
+    if (targetExists && existingContent === nextContent) {
+      return {
+        status: 'skipped',
+        targetPath: asset.targetPath,
+      };
+    }
+
+    await fs.writeFile(asset.targetPath, nextContent, 'utf8');
+    return {
+      status: targetExists ? 'updated' : 'installed',
+      targetPath: asset.targetPath,
+    };
+  }
+
   private async prepareRuntime(
     adapter: AssistantAdapter,
     layout: AssistantInstallLayout,
     entries: SummonableEntry[],
   ): Promise<string[]> {
-    if (adapter.id !== 'copilot' || !layout.runtimePath || !layout.runtimeEntryPath || !layout.metadataPath || !layout.versionPath) {
+    if (!layout.runtimePath || !layout.runtimeEntryPath || !layout.metadataPath || !layout.versionPath) {
       return [];
     }
 
     const details: string[] = [];
-    const directories = [layout.rootPath, layout.agentsPath, layout.runtimePath, path.dirname(layout.runtimeEntryPath)];
+    const directories = [
+      layout.rootPath,
+      layout.agentsPath,
+      layout.commandsPath,
+      layout.skillsPath,
+      layout.workflowsPath,
+      layout.runtimePath,
+      path.dirname(layout.runtimeEntryPath),
+    ].filter((value): value is string => Boolean(value));
 
     for (const dir of directories) {
       try {
@@ -312,6 +379,9 @@ export class AssistantInstallService {
         runtimePath: layout.runtimePath,
         runtimeEntryPath: layout.runtimeEntryPath,
         agentsPath: layout.agentsPath,
+        commandsPath: layout.commandsPath,
+        skillsPath: layout.skillsPath,
+        workflowsPath: layout.workflowsPath,
         summonables: entries.map((entry) => entry.id),
         bundledFiles,
       }),
@@ -323,7 +393,7 @@ export class AssistantInstallService {
       details.push(`updated manifest ${layout.metadataPath}`);
     }
 
-    details.push(`bundled tool entry: ${COPILOT_RUNTIME_ENTRY.replace('$HOME', os.homedir())}`);
+    details.push(`bundled tool entry: node "${layout.runtimeEntryPath}"`);
     return details;
   }
 }
@@ -344,6 +414,17 @@ function replaceManagedBlock(existingContent: string, renderedContent: string): 
     return `${withManagedUpdated.trimEnd()}\n\n${renderedUser.fullMatch}\n`;
   }
 
+  if (existingUser && renderedUser) {
+    const normalizedUserContent = extractLegacyUserContent(existingUser.innerContent);
+    const normalizedUserSection = normalizedUserContent
+      ? `${FORGE_USER_START}\n${normalizedUserContent}\n${FORGE_USER_END}`
+      : renderedUser.fullMatch;
+
+    if (normalizedUserSection !== existingUser.fullMatch) {
+      return withManagedUpdated.replace(existingUser.fullMatch, normalizedUserSection);
+    }
+  }
+
   return withManagedUpdated;
 }
 
@@ -356,7 +437,7 @@ function migrateLegacyContent(renderedContent: string, existingContent: string):
     return renderedContent;
   }
 
-  const userContent = stripYamlFrontmatter(existingContent).trim();
+  const userContent = extractLegacyUserContent(existingContent);
   const migratedUser = userContent
     ? `${FORGE_USER_START}\n${userContent}\n${FORGE_USER_END}`
     : renderedUser.fullMatch;
@@ -364,22 +445,80 @@ function migrateLegacyContent(renderedContent: string, existingContent: string):
   return `${frontmatterMatch[0]}${renderedManaged.fullMatch}\n\n${migratedUser}\n`;
 }
 
-function extractManagedSection(content: string): { fullMatch: string } | null {
-  const match = content.match(new RegExp(`${escapeForRegex(FORGE_MANAGED_START)}[\\s\\S]*?${escapeForRegex(FORGE_MANAGED_END)}`));
-  return match ? { fullMatch: match[0] } : null;
+function extractManagedSection(content: string): { fullMatch: string; innerContent: string } | null {
+  const match = content.match(
+    new RegExp(`(${escapeForRegex(FORGE_MANAGED_START)})\\n?([\\s\\S]*?)\\n?(${escapeForRegex(FORGE_MANAGED_END)})`),
+  );
+  return match ? { fullMatch: match[0], innerContent: match[2] ?? '' } : null;
 }
 
-function extractUserSection(content: string): { fullMatch: string } | null {
-  const match = content.match(new RegExp(`${escapeForRegex(FORGE_USER_START)}[\\s\\S]*?${escapeForRegex(FORGE_USER_END)}`));
-  return match ? { fullMatch: match[0] } : null;
+function extractUserSection(content: string): { fullMatch: string; innerContent: string } | null {
+  const startIndex = content.indexOf(FORGE_USER_START);
+  if (startIndex < 0) {
+    return null;
+  }
+
+  const endIndex = content.lastIndexOf(FORGE_USER_END);
+  if (endIndex < 0 || endIndex < startIndex) {
+    return null;
+  }
+
+  const fullMatch = content.slice(startIndex, endIndex + FORGE_USER_END.length);
+  const innerStartIndex = startIndex + FORGE_USER_START.length;
+  const innerContent = content.slice(innerStartIndex, endIndex).replace(/^\n/, '').replace(/\n$/, '');
+
+  return {
+    fullMatch,
+    innerContent,
+  };
 }
 
 function stripYamlFrontmatter(content: string): string {
   return content.replace(/^---\n[\s\S]*?\n---\n?/, '');
 }
 
+function extractLegacyUserContent(existingContent: string): string {
+  const existingUser = extractUserSection(existingContent);
+  if (existingUser) {
+    return existingUser.innerContent.trim();
+  }
+
+  let userContent = stripYamlFrontmatter(existingContent);
+  const existingManaged = extractManagedSection(userContent);
+  if (existingManaged) {
+    userContent = userContent.replace(existingManaged.fullMatch, '');
+  }
+
+  return userContent
+    .replace(FORGE_USER_START, '')
+    .replace(FORGE_USER_END, '')
+    .trim();
+}
+
+function hasYamlFrontmatter(content: string): boolean {
+  return /^---\n[\s\S]*?\n---\n?/.test(content);
+}
+
+function requiresFrontmatterMigration(renderedContent: string, existingContent: string): boolean {
+  return hasYamlFrontmatter(renderedContent) && !hasYamlFrontmatter(existingContent);
+}
+
 function escapeForRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+async function removeDirectoryIfEmpty(directoryPath: string): Promise<void> {
+  try {
+    await fs.rmdir(directoryPath);
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error) {
+      const errorCode = String((error as { code?: string }).code);
+      if (errorCode === 'ENOENT' || errorCode === 'ENOTEMPTY') {
+        return;
+      }
+    }
+    throw error;
+  }
 }
 
 export const assistantInstallService = new AssistantInstallService();

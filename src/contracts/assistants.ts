@@ -35,6 +35,9 @@ export interface AssistantAvailability {
 export interface AssistantInstallLayout {
   rootPath: string;
   agentsPath: string;
+  commandsPath?: string;
+  skillsPath?: string;
+  workflowsPath?: string;
   runtimePath?: string;
   runtimeEntryPath?: string;
   metadataPath?: string;

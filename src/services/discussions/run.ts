@@ -1,7 +1,5 @@
 import { DiscussionRun } from '../../contracts/discussions.js';
 import { git } from '../git.js';
-import { initializeSidecar } from '../sidecar.js';
-import { persistDiscussionRun } from './artifacts.js';
 import { resolveGitHubToken } from './auth.js';
 import { normalizeDiscussionFilters } from './filters.js';
 import { fetchGitHubDiscussions } from './fetch.js';
@@ -20,7 +18,7 @@ export interface RunDiscussionFetchOptions {
 export async function runDiscussionFetch(options: RunDiscussionFetchOptions): Promise<DiscussionRun> {
   process.chdir(options.cwd);
 
-  const repoRoot = await git.getRepoRoot();
+  await git.getRepoRoot();
   const repository = await git.getGitHubRepository();
   const token = resolveGitHubToken({ explicitToken: options.token });
   const filters = normalizeDiscussionFilters({
@@ -52,9 +50,6 @@ export async function runDiscussionFetch(options: RunDiscussionFetchOptions): Pr
     discussionCount: fetched.discussions.length,
     discussions: fetched.discussions,
   };
-
-  const sidecar = await initializeSidecar(repoRoot);
-  await persistDiscussionRun(sidecar, run);
 
   return run;
 }

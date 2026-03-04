@@ -63,26 +63,6 @@ export const SidecarMetadataSchema = z.object({
     })).default([]),
   }).optional(),
 
-  discussions: z.object({
-    lastRunId: z.string().optional(),
-    history: z.array(z.object({
-      id: z.string(),
-      timestamp: z.string().datetime(),
-      repository: z.string(),
-      discussionCount: z.number(),
-      artifactPath: z.string(),
-      filterDescription: z.string().optional(),
-    })).default([]),
-    preferences: z.object({
-      preferredCategory: z.object({
-        id: z.string().optional(),
-        name: z.string(),
-        slug: z.string(),
-        savedAt: z.string().datetime(),
-      }).optional(),
-    }).optional(),
-  }).optional(),
-
   /**
    * Arbitrary history of Forge runs against this repository.
    */
@@ -105,6 +85,9 @@ export const InstallerRuntimeMetadataSchema = z.object({
   runtimePath: z.string(),
   runtimeEntryPath: z.string(),
   agentsPath: z.string(),
+  commandsPath: z.string().optional(),
+  skillsPath: z.string().optional(),
+  workflowsPath: z.string().optional(),
   summonables: z.array(z.string()).default([]),
   bundledFiles: z.array(z.string()).default([]),
 });
