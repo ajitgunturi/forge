@@ -40,6 +40,8 @@ describe('Discussions services', () => {
   });
 
   it('throws when no GitHub token is available', () => {
+    vi.stubEnv('GH_TOKEN', '');
+    vi.stubEnv('GITHUB_TOKEN', '');
     expect(() => resolveGitHubToken()).toThrow(GitHubTokenRequiredError);
   });
 
