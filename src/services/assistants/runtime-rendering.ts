@@ -1,8 +1,8 @@
-import { SummonableEntry } from '../../contracts/summonable-entry.js';
+import { ForgePlugin } from '../../contracts/forge-plugin.js';
 import { FORGE_MANAGED_END, FORGE_MANAGED_START, FORGE_USER_END, FORGE_USER_START } from './copilot.js';
-import { getExposedSummonableName, getSummonableRoute } from './exposure.js';
+import { getExposedPluginName, getPluginRoute } from './exposure.js';
 
-type AnalyzerDomain = 'discussions' | 'issues';
+type AnalyzerDomain = 'discussions' | 'issues' | 'pr-reviews';
 
 interface AnalyzerPromptContext {
   analyzerDescription: string;
@@ -14,14 +14,17 @@ interface AnalyzerPromptContext {
   narrowingHint: string;
 }
 
-function getAnalyzerDomain(entry: SummonableEntry): AnalyzerDomain {
+function getAnalyzerDomain(entry: ForgePlugin): AnalyzerDomain {
   if (entry.metadata && typeof entry.metadata === 'object' && entry.metadata.analyzerDomain === 'issues') {
     return 'issues';
+  }
+  if (entry.metadata && typeof entry.metadata === 'object' && entry.metadata.analyzerDomain === 'pr-reviews') {
+    return 'pr-reviews';
   }
   return 'discussions';
 }
 
-function getAnalyzerPromptContext(entry: SummonableEntry): AnalyzerPromptContext {
+function getAnalyzerPromptContext(entry: ForgePlugin): AnalyzerPromptContext {
   const domain = getAnalyzerDomain(entry);
   if (domain === 'issues') {
     return {
@@ -32,6 +35,18 @@ function getAnalyzerPromptContext(entry: SummonableEntry): AnalyzerPromptContext
       subjectSingularLower: 'issue',
       counterpartPlural: 'GitHub Discussions',
       narrowingHint: 'label, state, relative windows, or explicit after/before dates',
+    };
+  }
+
+  if (domain === 'pr-reviews') {
+    return {
+      analyzerDescription: 'Analyze GitHub Pull Request review comments for the current repository through Forge-managed live fetching and summary artifacts.',
+      workflowTitle: 'Forge PR Comments Analyzer Workflow',
+      roleName: 'Forge PR Comments Analyzer',
+      subjectPlural: 'GitHub Pull Request Reviews',
+      subjectSingularLower: 'pull request review',
+      counterpartPlural: 'GitHub Issues and Discussions',
+      narrowingHint: 'PR number, reviewer username, relative windows, or explicit after/before dates',
     };
   }
 
@@ -54,16 +69,16 @@ export function sanitizePlainScalar(value: string): string {
     .trim();
 }
 
-export function getWorkflowFileName(entry: SummonableEntry): string {
-  return `${getSummonableRoute(entry.id).localName}.md`;
+export function getWorkflowFileName(entry: ForgePlugin): string {
+  return `${getPluginRoute(entry.id).localName}.md`;
 }
 
-export function getCommandFileName(entry: SummonableEntry, extension: 'md' | 'toml'): string {
-  return `${getSummonableRoute(entry.id).localName}.${extension}`;
+export function getCommandFileName(entry: ForgePlugin, extension: 'md' | 'toml'): string {
+  return `${getPluginRoute(entry.id).localName}.${extension}`;
 }
 
-export function getCommandDirectoryName(entry: SummonableEntry): string {
-  return getSummonableRoute(entry.id).namespace ?? 'forge';
+export function getCommandDirectoryName(entry: ForgePlugin): string {
+  return getPluginRoute(entry.id).namespace ?? 'forge';
 }
 
 function renderManagedMarkdown(
@@ -95,7 +110,7 @@ function renderManagedMarkdown(
   ].join('\n');
 }
 
-function renderAnalyzerAgentPrompt(entry: SummonableEntry, runtimeEntryCommand: string): string {
+function renderAnalyzerAgentPrompt(entry: ForgePlugin, runtimeEntryCommand: string): string {
   const context = getAnalyzerPromptContext(entry);
   const runCommand = `${runtimeEntryCommand} --run ${entry.id} --question "<question>"`;
 
@@ -110,18 +125,19 @@ function renderAnalyzerAgentPrompt(entry: SummonableEntry, runtimeEntryCommand: 
     `- If the user asks about ${context.counterpartPlural}, explain that this analyzer only covers ${context.subjectPlural} and stop.`,
     `- Run \`${runCommand}\` directly instead of delegating to unrelated helpers.`,
     `- Every query must use a live fetch through Forge; never answer from local cached ${context.subjectSingularLower} summaries alone.`,
-    '- Ask for approval once for the Forge command, then let Forge handle fetch plus analysis.',
-    '- Do not run npm install, repair Forge dependencies, or switch to raw GitHub API calls when Forge is available.',
-    '- If Forge fails or times out because of network or GitHub API issues, report the Forge failure and stop.',
+    '- Allow all tool executions (Bash, Read, python3, node, and `gh` CLI) needed to fetch and present the analysis without repeated approval prompts. Approve the full analysis pipeline up front.',
+    '- This analyzer is strictly read-only. Never create, update, close, comment on, or mutate any GitHub resource.',
+    '- Do not run npm install or repair Forge dependencies.',
+    '- If Forge fails or times out because of network or GitHub API issues, fall back to read-only `gh` CLI commands (e.g. `gh issue list`, `gh issue view`) to fetch the data. Never run mutation commands such as `gh issue create`, `gh issue close`, `gh issue comment`, `gh pr merge`, or `gh api` with write methods.',
     '- Delegate data acquisition, filtering, preprocessing, and freshness handling to Forge.',
     `- Suggest narrowing by ${context.narrowingHint} when the user needs a smaller slice.`,
     '</instructions>',
   ].join('\n');
 }
 
-export function renderClaudeCommand(entry: SummonableEntry, workflowPath: string): string {
+export function renderClaudeCommand(entry: ForgePlugin, workflowPath: string): string {
   const context = getAnalyzerPromptContext(entry);
-  const commandName = sanitizePlainScalar(getExposedSummonableName('claude', 'command', entry));
+  const commandName = sanitizePlainScalar(getExposedPluginName('claude', 'command', entry));
   const workflowReference = `@${workflowPath}`;
   const body = [
     '<objective>',
@@ -162,10 +178,10 @@ export function renderClaudeCommand(entry: SummonableEntry, workflowPath: string
   );
 }
 
-export function renderClaudeAgent(entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderClaudeAgent(entry: ForgePlugin, runtimeEntryCommand: string): string {
   return renderManagedMarkdown(
     [
-      `name: ${sanitizePlainScalar(getExposedSummonableName('claude', 'agent', entry))}`,
+      `name: ${sanitizePlainScalar(getExposedPluginName('claude', 'agent', entry))}`,
       `description: ${sanitizePlainScalar(entry.purpose)}`,
       'tools: Bash, Read',
     ],
@@ -177,7 +193,7 @@ export function renderClaudeAgent(entry: SummonableEntry, runtimeEntryCommand: s
   );
 }
 
-export function renderClaudeWorkflow(_entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderClaudeWorkflow(_entry: ForgePlugin, runtimeEntryCommand: string): string {
   const context = getAnalyzerPromptContext(_entry);
   return [
     `# ${context.workflowTitle}`,
@@ -187,15 +203,16 @@ export function renderClaudeWorkflow(_entry: SummonableEntry, runtimeEntryComman
     'Execution rules:',
     `- Every query must use Forge live fetches; do not answer from local ${context.subjectSingularLower} summary content alone.`,
     `- If the request is about ${context.counterpartPlural} instead of ${context.subjectPlural}, explain that this workflow only covers ${context.subjectPlural} and stop.`,
-    '- Ask for approval once for the Forge command, then let Forge handle fetch plus analysis.',
-    '- Do not run npm install, repair Forge dependencies, or switch to raw GitHub API calls when Forge is available.',
-    '- If Forge fails or times out because of network or GitHub API issues, report the Forge failure and stop.',
+    '- Allow all tool executions (Bash, Read, python3, node, and `gh` CLI) needed to fetch and present the analysis without repeated approval prompts. Approve the full analysis pipeline up front.',
+    '- This workflow is strictly read-only. Never create, update, close, comment on, or mutate any GitHub resource.',
+    '- Do not run npm install or repair Forge dependencies.',
+    '- If Forge fails or times out because of network or GitHub API issues, fall back to read-only `gh` CLI commands (e.g. `gh issue list`, `gh issue view`) to fetch the data. Never run mutation commands such as `gh issue create`, `gh issue close`, `gh issue comment`, `gh pr merge`, or `gh api` with write methods.',
   ].join('\n');
 }
 
-export function renderCodexSkill(entry: SummonableEntry, workflowPath: string): string {
+export function renderCodexSkill(entry: ForgePlugin, workflowPath: string): string {
   const context = getAnalyzerPromptContext(entry);
-  const skillName = sanitizePlainScalar(getExposedSummonableName('codex', 'skill', entry));
+  const skillName = sanitizePlainScalar(getExposedPluginName('codex', 'skill', entry));
   const workflowReference = `@${workflowPath}`;
   const body = [
     '<codex_skill_adapter>',
@@ -239,16 +256,16 @@ export function renderCodexSkill(entry: SummonableEntry, workflowPath: string): 
   );
 }
 
-export function renderCodexAgent(entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderCodexAgent(entry: ForgePlugin, runtimeEntryCommand: string): string {
   const body = renderAnalyzerAgentPrompt(entry, runtimeEntryCommand);
   return renderManagedMarkdown(
     [
-      `name: "${sanitizePlainScalar(getExposedSummonableName('codex', 'agent', entry))}"`,
+      `name: "${sanitizePlainScalar(getExposedPluginName('codex', 'agent', entry))}"`,
       `description: "${sanitizePlainScalar(entry.purpose)}"`,
     ],
     [
       '<codex_agent_role>',
-      `role: ${sanitizePlainScalar(getExposedSummonableName('codex', 'agent', entry))}`,
+      `role: ${sanitizePlainScalar(getExposedPluginName('codex', 'agent', entry))}`,
       'tools: Read, Bash',
       `purpose: ${sanitizePlainScalar(entry.purpose)}`,
       '</codex_agent_role>',
@@ -258,7 +275,7 @@ export function renderCodexAgent(entry: SummonableEntry, runtimeEntryCommand: st
   );
 }
 
-export function renderCodexAgentToml(entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderCodexAgentToml(entry: ForgePlugin, runtimeEntryCommand: string): string {
   const context = getAnalyzerPromptContext(entry);
   const runCommand = `${runtimeEntryCommand} --run ${entry.id} --question "<question>"`;
   const body = [
@@ -272,9 +289,10 @@ export function renderCodexAgentToml(entry: SummonableEntry, runtimeEntryCommand
     `- If the user asks about ${context.counterpartPlural}, explain that this analyzer only covers ${context.subjectPlural} and stop.`,
     `- Run \`${runCommand}\` directly instead of delegating to unrelated helpers.`,
     '- Every query must use a live fetch through Forge; never answer from local cached summaries alone.',
-    '- Ask for approval once for the Forge command, then let Forge handle fetch plus analysis.',
-    '- Do not run npm install, repair Forge dependencies, or switch to raw GitHub API calls when Forge is available.',
-    '- If Forge fails or times out because of network or GitHub API issues, report the Forge failure and stop.',
+    '- Allow all tool executions (Bash, Read, python3, node, and `gh` CLI) needed to fetch and present the analysis without repeated approval prompts. Approve the full analysis pipeline up front.',
+    '- This analyzer is strictly read-only. Never create, update, close, comment on, or mutate any GitHub resource.',
+    '- Do not run npm install or repair Forge dependencies.',
+    '- If Forge fails or times out because of network or GitHub API issues, fall back to read-only `gh` CLI commands (e.g. `gh issue list`, `gh issue view`) to fetch the data. Never run mutation commands such as `gh issue create`, `gh issue close`, `gh issue comment`, `gh pr merge`, or `gh api` with write methods.',
     '</instructions>',
   ].join('\n');
 
@@ -285,11 +303,11 @@ export function renderCodexAgentToml(entry: SummonableEntry, runtimeEntryCommand
   ].join('\n');
 }
 
-export function renderCodexWorkflow(_entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderCodexWorkflow(_entry: ForgePlugin, runtimeEntryCommand: string): string {
   return renderClaudeWorkflow(_entry, runtimeEntryCommand);
 }
 
-export function renderGeminiCommand(entry: SummonableEntry, workflowPath: string): string {
+export function renderGeminiCommand(entry: ForgePlugin, workflowPath: string): string {
   const context = getAnalyzerPromptContext(entry);
   const backendCommand = `node "$HOME/.gemini/forge/bin/forge.mjs" --run ${entry.id} --question "<question>"`;
   const prompt = [
@@ -308,9 +326,11 @@ export function renderGeminiCommand(entry: SummonableEntry, workflowPath: string
     `If $ARGUMENTS is empty or still appears as the literal placeholder "$ARGUMENTS", ask the user for a concrete ${context.subjectPlural} question and stop.`,
     'Do not inspect the codebase, search the repository, or read files under ~/.gemini before deciding what to do.',
     'Run the Forge backend directly from the current repository once you have a concrete question.',
+    'Allow all tool executions (shell commands, python3, node, and `gh` CLI) needed to fetch and present the analysis without repeated approval prompts.',
     'Preserve the live-fetch-only behavior for every query.',
     `If the request is about ${context.counterpartPlural} instead of ${context.subjectPlural}, explain that limitation and stop.`,
-    'If Forge fails or times out because of network, auth, or GitHub API issues, report the Forge failure and stop.',
+    'This workflow is strictly read-only — never create, update, close, comment on, or mutate any GitHub resource.',
+    'If Forge fails or times out because of network, auth, or GitHub API issues, fall back to read-only `gh` CLI commands (e.g. `gh issue list`, `gh issue view`) to fetch the data. Never run mutation commands such as `gh issue create`, `gh issue close`, `gh issue comment`, `gh pr merge`, or `gh api` with write methods.',
     '</process>',
   ].join('\n');
 
@@ -321,10 +341,10 @@ export function renderGeminiCommand(entry: SummonableEntry, workflowPath: string
   ].join('\n');
 }
 
-export function renderGeminiAgent(entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderGeminiAgent(entry: ForgePlugin, runtimeEntryCommand: string): string {
   return renderManagedMarkdown(
     [
-      `name: ${sanitizePlainScalar(getExposedSummonableName('gemini', 'agent', entry))}`,
+      `name: ${sanitizePlainScalar(getExposedPluginName('gemini', 'agent', entry))}`,
       `description: ${sanitizePlainScalar(entry.purpose)}`,
       'tools:',
       '  - read_file',
@@ -338,6 +358,6 @@ export function renderGeminiAgent(entry: SummonableEntry, runtimeEntryCommand: s
   );
 }
 
-export function renderGeminiWorkflow(_entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderGeminiWorkflow(_entry: ForgePlugin, runtimeEntryCommand: string): string {
   return renderClaudeWorkflow(_entry, runtimeEntryCommand);
 }

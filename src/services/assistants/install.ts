@@ -3,8 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assistantRegistry, AssistantAdapter, AssistantSupplementalAsset } from './registry.js';
 import { AssistantId, AssistantInstallLayout, AssistantOperationResult } from '../../contracts/assistants.js';
-import { SummonableEntry } from '../../contracts/summonable-entry.js';
-import { forgeSummonableEntries } from './summonables.js';
+import { ForgePlugin } from '../../contracts/forge-plugin.js';
+import { forgePlugins } from './summonables.js';
 import {
   createInstallerRuntimeMetadata,
   readInstallerRuntimeMetadata,
@@ -38,25 +38,25 @@ export class AssistantInstallService {
    * @param entry The summonable entry to install/update
    * @returns Structured results for each assistant target
    */
-  async installAll(cwd: string, entry: SummonableEntry): Promise<AssistantOperationResult[]> {
+  async installAll(cwd: string, entry: ForgePlugin): Promise<AssistantOperationResult[]> {
     return this.installSelected(cwd, entry, this.getSupportedAssistantIds());
   }
 
   async installSelected(
     cwd: string,
-    entry: SummonableEntry,
+    entry: ForgePlugin,
     assistantIds: AssistantId[]
   ): Promise<AssistantOperationResult[]> {
     return this.installEntriesSelected(cwd, [entry], assistantIds);
   }
 
   async installDefaultSummonables(cwd: string, assistantIds: AssistantId[]): Promise<AssistantOperationResult[]> {
-    return this.installEntriesSelected(cwd, forgeSummonableEntries, assistantIds);
+    return this.installEntriesSelected(cwd, forgePlugins, assistantIds);
   }
 
   async installEntriesSelected(
     cwd: string,
-    entries: SummonableEntry[],
+    entries: ForgePlugin[],
     assistantIds: AssistantId[]
   ): Promise<AssistantOperationResult[]> {
     const results: AssistantOperationResult[] = [];
@@ -89,7 +89,7 @@ export class AssistantInstallService {
 
   async installMany(
     cwd: string,
-    entries: SummonableEntry[],
+    entries: ForgePlugin[],
     adapter: AssistantAdapter
   ): Promise<AssistantOperationResult> {
     const availability = await adapter.checkAvailability();
@@ -152,7 +152,7 @@ export class AssistantInstallService {
     };
   }
 
-  async installOne(cwd: string, entry: SummonableEntry, adapter: AssistantAdapter): Promise<AssistantOperationResult> {
+  async installOne(cwd: string, entry: ForgePlugin, adapter: AssistantAdapter): Promise<AssistantOperationResult> {
     const availability = await adapter.checkAvailability();
     
     if (!availability.isAvailable) {
@@ -280,7 +280,7 @@ export class AssistantInstallService {
   private async prepareRuntime(
     adapter: AssistantAdapter,
     layout: AssistantInstallLayout,
-    entries: SummonableEntry[],
+    entries: ForgePlugin[],
   ): Promise<string[]> {
     if (!layout.runtimePath || !layout.runtimeEntryPath || !layout.metadataPath || !layout.versionPath) {
       return [];
@@ -382,7 +382,7 @@ export class AssistantInstallService {
         commandsPath: layout.commandsPath,
         skillsPath: layout.skillsPath,
         workflowsPath: layout.workflowsPath,
-        summonables: entries.map((entry) => entry.id),
+        plugins: entries.map((entry) => entry.id),
         bundledFiles,
       }),
     );

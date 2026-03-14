@@ -88,7 +88,7 @@ export const InstallerRuntimeMetadataSchema = z.object({
   commandsPath: z.string().optional(),
   skillsPath: z.string().optional(),
   workflowsPath: z.string().optional(),
-  summonables: z.array(z.string()).default([]),
+  plugins: z.array(z.string()).default([]),
   bundledFiles: z.array(z.string()).default([]),
 });
 

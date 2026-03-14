@@ -96,3 +96,10 @@ export class IssuesOnlyAnalyzerError extends UserFacingError {
     this.name = 'IssuesOnlyAnalyzerError';
   }
 }
+
+export class PRReviewsOnlyAnalyzerError extends UserFacingError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PRReviewsOnlyAnalyzerError';
+  }
+}

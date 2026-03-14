@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { AssistantAdapter, AssistantSupplementalAsset } from './registry.js';
 import { AssistantId, AssistantAvailability, AssistantInstallLayout } from '../../contracts/assistants.js';
-import { SummonableEntry } from '../../contracts/summonable-entry.js';
+import { ForgePlugin } from '../../contracts/forge-plugin.js';
 import { entryRenderer } from './render-entry.js';
 import { AnalysisRun } from '../../contracts/analysis.js';
 import { PlanRun } from '../../contracts/planning.js';
@@ -32,7 +32,7 @@ export class CopilotAdapter implements AssistantAdapter {
   /**
    * Gets the target path for installing a summonable entry for Copilot.
    */
-  getInstallTarget(cwd: string, entry: SummonableEntry): string {
+  getInstallTarget(cwd: string, entry: ForgePlugin): string {
     return path.join(this.resolveInstallLayout(cwd).agentsPath, `${entry.id}.agent.md`);
   }
 
@@ -54,11 +54,11 @@ export class CopilotAdapter implements AssistantAdapter {
   /**
    * Renders the assistant-agnostic entry into the native format for Copilot.
    */
-  render(entry: SummonableEntry): string {
+  render(entry: ForgePlugin): string {
     return renderCopilotAgent(entry);
   }
 
-  getSupplementalAssets(cwd: string, entry: SummonableEntry): AssistantSupplementalAsset[] {
+  getSupplementalAssets(cwd: string, entry: ForgePlugin): AssistantSupplementalAsset[] {
     const layout = this.resolveInstallLayout(cwd);
     return [
       {
@@ -95,7 +95,7 @@ export const FORGE_MANAGED_END = '<!-- END FORGE MANAGED BLOCK -->';
 export const FORGE_USER_START = '<!-- BEGIN USER CUSTOMIZATIONS -->';
 export const FORGE_USER_END = '<!-- END USER CUSTOMIZATIONS -->';
 
-function renderCopilotAgent(entry: SummonableEntry): string {
+function renderCopilotAgent(entry: ForgePlugin): string {
   const description = sanitizePlainScalar(entry.purpose);
   const name = sanitizePlainScalar(entry.id);
   const body = entryRenderer.renderToMarkdown(entry);
@@ -119,7 +119,7 @@ function renderCopilotAgent(entry: SummonableEntry): string {
   ].join('\n');
 }
 
-function renderCopilotSkill(entry: SummonableEntry): string {
+function renderCopilotSkill(entry: ForgePlugin): string {
   const description = sanitizePlainScalar(entry.purpose);
   const name = sanitizePlainScalar(entry.id);
   const body = entryRenderer.renderSkillMarkdown(entry);

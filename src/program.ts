@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { installAssistantsCommand } from "./commands/install-assistants.js";
 import { runDiscussionAnalyzer } from "./services/discussions/analyze.js";
 import { runIssueAnalyzer } from "./services/issues/analyze.js";
+import { runPRReviewAnalyzer } from "./services/pr-reviews/analyze.js";
 import { AssistantId } from "./contracts/assistants.js";
 
 type PackageManifest = {
@@ -29,10 +30,12 @@ type ProgramOptions = {
   issueState?: string;
   label?: string;
   discussionLimit?: string;
+  pr?: string;
+  reviewer?: string;
 };
 
 const EXECUTABLE_NAME = "forge";
-const ANALYZER_IDS = ["forge-discussion-analyzer", "forge-issue-analyzer"] as const;
+const ANALYZER_IDS = ["forge-discussion-analyzer", "forge-issue-analyzer", "forge-pr-comments-analyzer"] as const;
 type AnalyzerId = (typeof ANALYZER_IDS)[number];
 
 async function readPackageManifest(): Promise<PackageManifest> {
@@ -66,6 +69,8 @@ export async function createProgram(): Promise<Command> {
     .option("--issue-state <state>", "Issue state filter: open, closed, or all.")
     .option("--label <name>", "Filter issues by GitHub issue label.")
     .option("--discussion-limit <number>", "Maximum number of discussions to persist (1-5000).", "500")
+    .option("--pr <number>", "PR number to analyze. If omitted, detects from the current branch.")
+    .option("--reviewer <username>", "Filter PR review comments by reviewer username.")
     .addOption(new Option("--run-summonable <id>", "Run a Forge-managed assistant backend directly.").hideHelp())
     .hook("preAction", (thisCommand) => {
       const options = thisCommand.opts();
@@ -91,16 +96,25 @@ export async function createProgram(): Promise<Command> {
         before: options.before,
         limit: Number.parseInt(options.discussionLimit ?? "500", 10),
       };
-      const answer = parsedAnalyzer === "forge-discussion-analyzer"
-        ? await runDiscussionAnalyzer({
-            ...sharedOptions,
-            category: options.category,
-          })
-        : await runIssueAnalyzer({
-            ...sharedOptions,
-            state: options.issueState,
-            label: options.label,
-          });
+      let answer: string;
+      if (parsedAnalyzer === "forge-discussion-analyzer") {
+        answer = await runDiscussionAnalyzer({
+          ...sharedOptions,
+          category: options.category,
+        });
+      } else if (parsedAnalyzer === "forge-pr-comments-analyzer") {
+        answer = await runPRReviewAnalyzer({
+          ...sharedOptions,
+          pr: options.pr ? Number.parseInt(options.pr, 10) : undefined,
+          reviewer: options.reviewer,
+        });
+      } else {
+        answer = await runIssueAnalyzer({
+          ...sharedOptions,
+          state: options.issueState,
+          label: options.label,
+        });
+      }
       console.log(answer);
       return;
     }

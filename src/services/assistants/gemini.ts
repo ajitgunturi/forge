@@ -2,8 +2,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { AssistantAdapter, AssistantSupplementalAsset } from './registry.js';
 import { AssistantId, AssistantAvailability, AssistantInstallLayout } from '../../contracts/assistants.js';
-import { SummonableEntry } from '../../contracts/summonable-entry.js';
-import { getExposedSummonableName } from './exposure.js';
+import { ForgePlugin } from '../../contracts/forge-plugin.js';
+import { getExposedPluginName } from './exposure.js';
 import {
   getCommandDirectoryName,
   getCommandFileName,
@@ -37,7 +37,7 @@ export class GeminiAdapter implements AssistantAdapter {
   /**
    * Gemini uses ~/.gemini/commands for user-level command entrypoints.
    */
-  getInstallTarget(cwd: string, entry: SummonableEntry): string {
+  getInstallTarget(cwd: string, entry: ForgePlugin): string {
     const layout = this.resolveInstallLayout(cwd);
     return path.join(
       layout.commandsPath ?? path.join(layout.rootPath, 'commands'),
@@ -64,7 +64,7 @@ export class GeminiAdapter implements AssistantAdapter {
   /**
    * Renders the Gemini command entrypoint.
    */
-  render(entry: SummonableEntry): string {
+  render(entry: ForgePlugin): string {
     const layout = this.resolveInstallLayout('');
     const workflowPath = path.join(
       layout.workflowsPath ?? path.join(layout.rootPath, 'forge', 'workflows'),
@@ -73,13 +73,13 @@ export class GeminiAdapter implements AssistantAdapter {
     return renderGeminiCommand(entry, workflowPath);
   }
 
-  getSupplementalAssets(cwd: string, entry: SummonableEntry): AssistantSupplementalAsset[] {
+  getSupplementalAssets(cwd: string, entry: ForgePlugin): AssistantSupplementalAsset[] {
     const layout = this.resolveInstallLayout(cwd);
     const runtimeEntryCommand = 'node "$HOME/.gemini/forge/bin/forge.mjs"';
 
     return [
       {
-        targetPath: path.join(layout.agentsPath, `${getExposedSummonableName(this.id, 'agent', entry)}.md`),
+        targetPath: path.join(layout.agentsPath, `${getExposedPluginName(this.id, 'agent', entry)}.md`),
         content: renderGeminiAgent(entry, runtimeEntryCommand),
       },
       {
@@ -92,24 +92,24 @@ export class GeminiAdapter implements AssistantAdapter {
     ];
   }
 
-  getAssetMigrationSources(cwd: string, entry: SummonableEntry): Record<string, string[]> {
+  getAssetMigrationSources(cwd: string, entry: ForgePlugin): Record<string, string[]> {
     const layout = this.resolveInstallLayout(cwd);
     const agentPath = this.getSupplementalAssets(cwd, entry)[0]!.targetPath;
     return {
       [agentPath]: [
-        path.join(cwd, '.gemini', `${getExposedSummonableName('gemini', 'command', entry)}.md`),
+        path.join(cwd, '.gemini', `${getExposedPluginName('gemini', 'command', entry)}.md`),
         path.join(cwd, '.gemini', `${entry.id}.md`),
-        path.join(layout.rootPath, `${getExposedSummonableName('gemini', 'command', entry)}.md`),
+        path.join(layout.rootPath, `${getExposedPluginName('gemini', 'command', entry)}.md`),
         path.join(layout.rootPath, `${entry.id}.md`),
       ],
     };
   }
 
-  getObsoleteAssetPaths(cwd: string, entry: SummonableEntry): string[] {
+  getObsoleteAssetPaths(cwd: string, entry: ForgePlugin): string[] {
     return [
-      path.join(cwd, '.gemini', `${getExposedSummonableName('gemini', 'command', entry)}.md`),
+      path.join(cwd, '.gemini', `${getExposedPluginName('gemini', 'command', entry)}.md`),
       path.join(cwd, '.gemini', `${entry.id}.md`),
-      path.join(this.resolveInstallLayout(cwd).rootPath, `${getExposedSummonableName('gemini', 'command', entry)}.md`),
+      path.join(this.resolveInstallLayout(cwd).rootPath, `${getExposedPluginName('gemini', 'command', entry)}.md`),
       path.join(this.resolveInstallLayout(cwd).rootPath, `${entry.id}.md`),
     ].filter((assetPath) => assetPath !== this.getInstallTarget(cwd, entry));
   }

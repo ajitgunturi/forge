@@ -1,20 +1,20 @@
-import { SummonableEntry } from '../../contracts/summonable-entry.js';
+import { ForgePlugin } from '../../contracts/forge-plugin.js';
 
 /**
  * Shared entry renderer.
  *
- * This service takes a SummonableEntry (assistant-agnostic model) and converts
+ * This service takes a ForgePlugin (assistant-agnostic model) and converts
  * it into a standardized Markdown representation that can be consumed by
  * most AI assistants.
  */
 export class EntryRenderer {
   /**
-   * Renders a SummonableEntry as a Markdown document.
+   * Renders a ForgePlugin as a Markdown document.
    *
    * @param entry The summonable entry model.
    * @returns A rendered Markdown string.
    */
-  renderToMarkdown(entry: SummonableEntry, options: { title?: string } = {}): string {
+  renderToMarkdown(entry: ForgePlugin, options: { title?: string } = {}): string {
     const lines: string[] = [];
 
     lines.push(`# ${options.title ?? entry.displayName}`);
@@ -71,7 +71,7 @@ export class EntryRenderer {
     return lines.join('\n').trim();
   }
 
-  renderSkillMarkdown(entry: SummonableEntry): string {
+  renderSkillMarkdown(entry: ForgePlugin): string {
     const lines: string[] = [];
     const instructionLines = entry.instructions
       .split('\n')

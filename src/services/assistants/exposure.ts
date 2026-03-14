@@ -1,26 +1,26 @@
 import { AssistantId } from '../../contracts/assistants.js';
-import { SummonableEntry } from '../../contracts/summonable-entry.js';
+import { ForgePlugin } from '../../contracts/forge-plugin.js';
 
 export type AssistantSurface = 'agent' | 'command' | 'skill';
 
-export interface SummonableRoute {
+export interface ForgePluginRoute {
   namespace: string | null;
   localName: string;
   namespacedName: string;
 }
 
 /**
- * Returns the assistant-facing label for a summonable entry and surface.
+ * Returns the assistant-facing label for a plugin entry and surface.
  */
-export function getExposedSummonableName(
+export function getExposedPluginName(
   assistantId: AssistantId,
   surface: AssistantSurface,
-  entry: SummonableEntry,
+  entry: ForgePlugin,
 ): string {
   switch (surface) {
     case 'command':
       if (assistantId === 'claude' || assistantId === 'gemini') {
-        return toNamespacedSummonableName(entry.id);
+        return toNamespacedPluginName(entry.id);
       }
       return entry.id;
     case 'agent':
@@ -30,12 +30,12 @@ export function getExposedSummonableName(
   }
 }
 
-export function toNamespacedSummonableName(entryId: string): string {
-  const route = getSummonableRoute(entryId);
+export function toNamespacedPluginName(entryId: string): string {
+  const route = getPluginRoute(entryId);
   return route.namespacedName;
 }
 
-export function getSummonableRoute(entryId: string): SummonableRoute {
+export function getPluginRoute(entryId: string): ForgePluginRoute {
   const separatorIndex = entryId.indexOf('-');
   if (separatorIndex < 0) {
     return {

@@ -2,8 +2,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { AssistantAdapter, AssistantSupplementalAsset } from './registry.js';
 import { AssistantId, AssistantAvailability, AssistantInstallLayout } from '../../contracts/assistants.js';
-import { SummonableEntry } from '../../contracts/summonable-entry.js';
-import { getExposedSummonableName } from './exposure.js';
+import { ForgePlugin } from '../../contracts/forge-plugin.js';
+import { getExposedPluginName } from './exposure.js';
 import {
   getCommandDirectoryName,
   getCommandFileName,
@@ -38,7 +38,7 @@ export class ClaudeAdapter implements AssistantAdapter {
   /**
    * Claude uses ~/.claude/commands for user-level command entrypoints.
    */
-  getInstallTarget(cwd: string, entry: SummonableEntry): string {
+  getInstallTarget(cwd: string, entry: ForgePlugin): string {
     const layout = this.resolveInstallLayout(cwd);
     return path.join(
       layout.commandsPath ?? path.join(layout.rootPath, 'commands'),
@@ -65,7 +65,7 @@ export class ClaudeAdapter implements AssistantAdapter {
   /**
    * Renders the Claude command entrypoint.
    */
-  render(entry: SummonableEntry): string {
+  render(entry: ForgePlugin): string {
     const layout = this.resolveInstallLayout('');
     const workflowPath = path.join(
       layout.workflowsPath ?? path.join(layout.rootPath, 'forge', 'workflows'),
@@ -74,12 +74,12 @@ export class ClaudeAdapter implements AssistantAdapter {
     return renderClaudeCommand(entry, workflowPath);
   }
 
-  getSupplementalAssets(cwd: string, entry: SummonableEntry): AssistantSupplementalAsset[] {
+  getSupplementalAssets(cwd: string, entry: ForgePlugin): AssistantSupplementalAsset[] {
     const layout = this.resolveInstallLayout(cwd);
     const runtimeEntryCommand = 'node "$HOME/.claude/forge/bin/forge.mjs"';
     return [
       {
-        targetPath: path.join(layout.agentsPath, `${getExposedSummonableName(this.id, 'agent', entry)}.md`),
+        targetPath: path.join(layout.agentsPath, `${getExposedPluginName(this.id, 'agent', entry)}.md`),
         content: renderClaudeAgent(entry, runtimeEntryCommand),
       },
       {
@@ -92,13 +92,13 @@ export class ClaudeAdapter implements AssistantAdapter {
     ];
   }
 
-  getAssetMigrationSources(cwd: string, entry: SummonableEntry): Record<string, string[]> {
+  getAssetMigrationSources(cwd: string, entry: ForgePlugin): Record<string, string[]> {
     const layout = this.resolveInstallLayout(cwd);
-    const namespacedAgentPath = path.join(layout.agentsPath, `${getExposedSummonableName('claude', 'command', entry)}.md`);
+    const namespacedAgentPath = path.join(layout.agentsPath, `${getExposedPluginName('claude', 'command', entry)}.md`);
     const namespacedSkillPath = path.join(
       layout.rootPath,
       'skills',
-      getExposedSummonableName('claude', 'command', entry),
+      getExposedPluginName('claude', 'command', entry),
       'SKILL.md',
     );
     const legacySkillPath = path.join(layout.rootPath, 'skills', entry.id, 'SKILL.md');
@@ -110,10 +110,10 @@ export class ClaudeAdapter implements AssistantAdapter {
     };
   }
 
-  getObsoleteAssetPaths(cwd: string, entry: SummonableEntry): string[] {
+  getObsoleteAssetPaths(cwd: string, entry: ForgePlugin): string[] {
     const layout = this.resolveInstallLayout(cwd);
-    const namespacedAgentPath = path.join(layout.agentsPath, `${getExposedSummonableName('claude', 'command', entry)}.md`);
-    const namespacedSkillDir = path.join(layout.rootPath, 'skills', getExposedSummonableName('claude', 'command', entry));
+    const namespacedAgentPath = path.join(layout.agentsPath, `${getExposedPluginName('claude', 'command', entry)}.md`);
+    const namespacedSkillDir = path.join(layout.rootPath, 'skills', getExposedPluginName('claude', 'command', entry));
     const legacySkillDir = path.join(layout.rootPath, 'skills', entry.id);
 
     return [
