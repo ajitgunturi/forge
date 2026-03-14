@@ -106,8 +106,8 @@ export const forgeIssueAnalyzerEntry: ForgePlugin = {
 };
 
 export const forgePRReviewAnalyzerEntry: ForgePlugin = {
-  id: 'forge-pr-review-analyzer',
-  displayName: 'Forge PR Review Analyzer',
+  id: 'forge-pr-comments-analyzer',
+  displayName: 'Forge PR Comments Analyzer',
   purpose: 'Analyze GitHub Pull Request review comments for the current repository through Forge-managed live fetching and summary artifacts.',
   instructions: [
     'Use this agent for PR review comment analysis, triage, pattern detection, and surgical fix suggestions.',
@@ -118,7 +118,7 @@ export const forgePRReviewAnalyzerEntry: ForgePlugin = {
     'Do not run npm install or repair Forge dependencies.',
     'If Forge fails or times out because of network or GitHub API issues, fall back to read-only `gh` CLI commands (e.g. `gh pr view`, `gh pr diff`, `gh api`) to fetch the data. Never run mutation commands such as `gh pr close`, `gh pr merge`, `gh pr comment`, `gh pr review`, or `gh api` with write methods.',
     'Run the Forge command directly instead of delegating to unrelated skills or helpers.',
-    'If GitHub Copilot chooses to use a skill for this task, use only the `forge-pr-review-analyzer` skill that points back to the same Forge command.',
+    'If GitHub Copilot chooses to use a skill for this task, use only the `forge-pr-comments-analyzer` skill that points back to the same Forge command.',
     'Delegate data acquisition, filtering, preprocessing, and freshness handling to Forge.',
     'Suggest narrowing by reviewer username, relative windows, or explicit after/before dates when the user needs a smaller slice.',
     'When no --pr number is provided, detect the PR from the current branch automatically.',
@@ -137,13 +137,13 @@ export const forgePRReviewAnalyzerEntry: ForgePlugin = {
   ],
   commands: [
     {
-      name: '/agent forge-pr-review-analyzer',
-      description: 'Select the PR review analyzer agent, then ask a question.',
-      usage: `${COPILOT_RUNTIME_ENTRY} --run forge-pr-review-analyzer --question "<your question>"`,
+      name: '/agent forge-pr-comments-analyzer',
+      description: 'Select the PR comments analyzer agent, then ask a question.',
+      usage: `${COPILOT_RUNTIME_ENTRY} --run forge-pr-comments-analyzer --question "<your question>"`,
       examples: [
-        '/agent -> select forge-pr-review-analyzer -> "analyze review comments on #42"',
-        `${COPILOT_RUNTIME_ENTRY} --run forge-pr-review-analyzer --pr 42 --question "suggest fixes for all critical comments"`,
-        `${COPILOT_RUNTIME_ENTRY} --run forge-pr-review-analyzer --reviewer octocat --question "summarize feedback from octocat"`,
+        '/agent -> select forge-pr-comments-analyzer -> "analyze review comments on #42"',
+        `${COPILOT_RUNTIME_ENTRY} --run forge-pr-comments-analyzer --pr 42 --question "suggest fixes for all critical comments"`,
+        `${COPILOT_RUNTIME_ENTRY} --run forge-pr-comments-analyzer --reviewer octocat --question "summarize feedback from octocat"`,
       ],
     },
   ],

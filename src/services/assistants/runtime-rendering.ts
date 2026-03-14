@@ -41,8 +41,8 @@ function getAnalyzerPromptContext(entry: ForgePlugin): AnalyzerPromptContext {
   if (domain === 'pr-reviews') {
     return {
       analyzerDescription: 'Analyze GitHub Pull Request review comments for the current repository through Forge-managed live fetching and summary artifacts.',
-      workflowTitle: 'Forge PR Review Analyzer Workflow',
-      roleName: 'Forge PR Review Analyzer',
+      workflowTitle: 'Forge PR Comments Analyzer Workflow',
+      roleName: 'Forge PR Comments Analyzer',
       subjectPlural: 'GitHub Pull Request Reviews',
       subjectSingularLower: 'pull request review',
       counterpartPlural: 'GitHub Issues and Discussions',

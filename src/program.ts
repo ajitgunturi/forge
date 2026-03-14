@@ -35,7 +35,7 @@ type ProgramOptions = {
 };
 
 const EXECUTABLE_NAME = "forge";
-const ANALYZER_IDS = ["forge-discussion-analyzer", "forge-issue-analyzer", "forge-pr-review-analyzer"] as const;
+const ANALYZER_IDS = ["forge-discussion-analyzer", "forge-issue-analyzer", "forge-pr-comments-analyzer"] as const;
 type AnalyzerId = (typeof ANALYZER_IDS)[number];
 
 async function readPackageManifest(): Promise<PackageManifest> {
@@ -102,7 +102,7 @@ export async function createProgram(): Promise<Command> {
           ...sharedOptions,
           category: options.category,
         });
-      } else if (parsedAnalyzer === "forge-pr-review-analyzer") {
+      } else if (parsedAnalyzer === "forge-pr-comments-analyzer") {
         answer = await runPRReviewAnalyzer({
           ...sharedOptions,
           pr: options.pr ? Number.parseInt(options.pr, 10) : undefined,

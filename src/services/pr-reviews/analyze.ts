@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { PRReviewSummaryArtifact, PreparedPRReviewDigest } from '../../contracts/pr-reviews.js';
+import { PRReviewSummaryArtifact, PreparedPRReviewDigest, CommentCategory } from '../../contracts/pr-reviews.js';
 import { UserFacingError } from '../../lib/errors.js';
 import { deriveSidecarContext } from '../sidecar.js';
 import { buildPreparedPRReviewDigest } from './prepare.js';
@@ -37,7 +37,7 @@ export async function runPRReviewAnalyzer(options: RunPRReviewAnalyzerOptions): 
   });
 
   if (!intent.normalizedQuestion) {
-    throw new UserFacingError('A question is required when running forge-pr-review-analyzer.');
+    throw new UserFacingError('A question is required when running forge-pr-comments-analyzer.');
   }
   assertPRScopedQuestion(intent);
 
@@ -200,7 +200,153 @@ function renderAnswer(digest: PreparedPRReviewDigest, intent: PRReviewIntent): s
     lines.push('');
   }
 
+  // Developer growth digest
+  const growthTopics = deriveGrowthTopics(digest);
+  if (growthTopics.length > 0) {
+    lines.push('## Developer Growth Digest');
+    lines.push('');
+    lines.push('Based on the review feedback patterns, here are topics to study for leveling up:');
+    lines.push('');
+    for (const topic of growthTopics) {
+      lines.push(`### ${topic.priority === 'high' ? '!!' : topic.priority === 'medium' ? '!' : '-'} ${topic.area}`);
+      lines.push(`**Why:** ${topic.reason}  `);
+      lines.push(`**Topics to explore:**`);
+      for (const item of topic.readingTopics) {
+        lines.push(`- ${item}`);
+      }
+      lines.push('');
+    }
+  }
+
   return lines.join('\n').trim();
+}
+
+interface GrowthTopic {
+  area: string;
+  priority: 'high' | 'medium' | 'low';
+  reason: string;
+  readingTopics: string[];
+}
+
+const CATEGORY_GROWTH_MAP: Record<CommentCategory, { area: string; readingTopics: string[] } | null> = {
+  security: {
+    area: 'Application Security',
+    readingTopics: [
+      'OWASP Top 10 — common web application vulnerabilities and mitigations',
+      'Secure coding practices: input validation, output encoding, parameterized queries',
+      'Authentication and authorization patterns (OAuth 2.0, JWT best practices)',
+      'Secrets management and credential hygiene',
+    ],
+  },
+  bug: {
+    area: 'Defensive Programming & Correctness',
+    readingTopics: [
+      'Defensive programming: null safety, boundary checks, invariant assertions',
+      'Error handling strategies: fail-fast vs. graceful degradation',
+      'Debugging methodologies: bisection, minimal reproducers, root-cause analysis',
+      'Type systems and static analysis tools for catching bugs at compile time',
+    ],
+  },
+  performance: {
+    area: 'Performance Engineering',
+    readingTopics: [
+      'Algorithmic complexity (Big-O) and data structure selection',
+      'Database query optimization: indexing, N+1 detection, query plans',
+      'Caching strategies: cache invalidation, layered caches, TTL design',
+      'Profiling and benchmarking tools for your runtime (CPU, memory, I/O)',
+    ],
+  },
+  logic: {
+    area: 'Software Correctness & Edge Cases',
+    readingTopics: [
+      'Boundary value analysis and equivalence partitioning for edge cases',
+      'Concurrency primitives: mutexes, semaphores, channels, lock-free patterns',
+      'State machine design for modeling complex control flow',
+      'Property-based testing and fuzzing to surface unexpected inputs',
+    ],
+  },
+  testing: {
+    area: 'Testing Strategy & Quality',
+    readingTopics: [
+      'Testing pyramid: unit, integration, and end-to-end test balance',
+      'Test design: arrange-act-assert, fixtures, and deterministic tests',
+      'Mocking vs. integration testing tradeoffs',
+      'Code coverage metrics: what to measure and when coverage is misleading',
+    ],
+  },
+  refactor: {
+    area: 'Clean Code & Design Patterns',
+    readingTopics: [
+      'SOLID principles and when to apply (and when not to over-apply) them',
+      'Refactoring patterns: extract method/class, replace conditional with polymorphism',
+      'Code smells: long methods, feature envy, data clumps, shotgun surgery',
+      'Martin Fowler\'s "Refactoring" — catalog of safe, incremental transforms',
+    ],
+  },
+  naming: {
+    area: 'Code Readability & Communication',
+    readingTopics: [
+      'Naming conventions: intention-revealing names, domain vocabulary consistency',
+      'Self-documenting code: making code read like prose without excess comments',
+      'Ubiquitous language (Domain-Driven Design) — aligning code names with business terms',
+    ],
+  },
+  style: {
+    area: 'Code Consistency & Tooling',
+    readingTopics: [
+      'Linters and formatters: configure once, enforce automatically (ESLint, Prettier, etc.)',
+      'Team style guides: adopting and contributing to shared conventions',
+      'EditorConfig and pre-commit hooks for automated consistency',
+    ],
+  },
+  documentation: {
+    area: 'Technical Documentation',
+    readingTopics: [
+      'Writing effective code comments: explain "why", not "what"',
+      'API documentation: clear contracts, examples, and edge-case notes',
+      'Architecture Decision Records (ADRs) for capturing design rationale',
+    ],
+  },
+  general: null,
+  approval: null,
+  nitpick: null,
+  question: null,
+};
+
+function deriveGrowthTopics(digest: PreparedPRReviewDigest): GrowthTopic[] {
+  const topics: GrowthTopic[] = [];
+  const comments = digest.comments;
+
+  // Aggregate signal strength per category: critical=4, major=3, minor=1, informational=0
+  const severityWeight: Record<string, number> = { critical: 4, major: 3, minor: 1, informational: 0 };
+  const categorySignal = new Map<CommentCategory, number>();
+
+  for (const comment of comments) {
+    const weight = severityWeight[comment.severity] ?? 0;
+    categorySignal.set(comment.category, (categorySignal.get(comment.category) ?? 0) + weight);
+  }
+
+  // Sort by signal strength descending, filter to categories with growth mappings
+  const ranked = [...categorySignal.entries()]
+    .filter(([cat]) => CATEGORY_GROWTH_MAP[cat] !== null)
+    .sort((a, b) => b[1] - a[1]);
+
+  for (const [category, signal] of ranked) {
+    const mapping = CATEGORY_GROWTH_MAP[category];
+    if (!mapping) continue;
+
+    const count = digest.totals.categories[category] ?? 0;
+    const priority: GrowthTopic['priority'] = signal >= 8 ? 'high' : signal >= 3 ? 'medium' : 'low';
+
+    topics.push({
+      area: mapping.area,
+      priority,
+      reason: `${count} review comment(s) in this category — focus area based on reviewer feedback`,
+      readingTopics: mapping.readingTopics,
+    });
+  }
+
+  return topics;
 }
 
 function renderCommentBlock(lines: string[], comment: PreparedPRReviewDigest['comments'][number]): void {

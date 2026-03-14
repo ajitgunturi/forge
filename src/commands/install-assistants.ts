@@ -143,8 +143,8 @@ function buildSuccessMessage(assistantIds: AssistantId[]): string {
   const prReviewGeminiCommand = getExposedPluginName('gemini', 'command', forgePRReviewAnalyzerEntry);
 
   if (assistantIds.includes('copilot')) {
-    lines.push('- Copilot agents: `/agent forge-discussion-analyzer`, `/agent forge-issue-analyzer`, `/agent forge-pr-review-analyzer`');
-    lines.push('- Copilot skills (gh copilot): `forge-discussion-analyzer`, `forge-issue-analyzer`, `forge-pr-review-analyzer`');
+    lines.push('- Copilot agents: `/agent forge-discussion-analyzer`, `/agent forge-issue-analyzer`, `/agent forge-pr-comments-analyzer`');
+    lines.push('- Copilot skills (gh copilot): `forge-discussion-analyzer`, `forge-issue-analyzer`, `forge-pr-comments-analyzer`');
   }
 
   if (assistantIds.includes('claude')) {
