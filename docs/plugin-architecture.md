@@ -1,10 +1,10 @@
 # Forge Plugin Architecture Reference
 
-This document describes how Forge plugins (called "summonable entries") are designed, built, installed, and consumed by AI assistants. Use it as the authoritative reference when adding new plugins to the repo.
+This document describes how Forge plugins (called "plugins") are designed, built, installed, and consumed by AI assistants. Use it as the authoritative reference when adding new plugins to the repo.
 
 ## Core Design Principles
 
-1. **Define once, render to many.** A plugin is defined as a single `SummonableEntry` (assistant-agnostic). Four adapters (Claude, Copilot, Gemini, Codex) each render it into their native format.
+1. **Define once, render to many.** A plugin is defined as a single `ForgePlugin` (assistant-agnostic). Four adapters (Claude, Copilot, Gemini, Codex) each render it into their native format.
 
 2. **Strictly read-only.** Plugins must never create, update, close, comment on, or mutate any GitHub resource. This applies to the Forge backend AND to any fallback instructions given to the host assistant. The `gh` CLI fallback is explicitly scoped to read-only commands.
 
@@ -19,7 +19,7 @@ This document describes how Forge plugins (called "summonable entries") are desi
 ## Architecture Overview
 
 ```
-SummonableEntry (assistant-agnostic definition)
+ForgePlugin (assistant-agnostic definition)
        │
        ├─── AssistantAdapter.render(entry) ──► Native format per assistant
        │      ├── Claude:  Markdown command + agent + workflow
@@ -39,18 +39,18 @@ SummonableEntry (assistant-agnostic definition)
               └── Persist: .forge/{domain}/summary/
 ```
 
-## Plugin Definition: SummonableEntry
+## Plugin Definition: ForgePlugin
 
-**File:** `src/contracts/summonable-entry.ts`
+**File:** `src/contracts/forge-plugin.ts`
 
 ```typescript
-interface SummonableEntry {
+interface ForgePlugin {
   id: string;                           // Stable kebab-case ID, e.g. 'forge-discussion-analyzer'
   displayName: string;                  // Human-facing name
   purpose: string;                      // One-sentence scope description
   instructions: string;                 // Bullet-point instructions for the host assistant
-  capabilities: SummonableCapability[]; // What this plugin can do
-  commands: SummonableCommand[];        // How to invoke it
+  capabilities: ForgePluginCapability[]; // What this plugin can do
+  commands: ForgePluginCommand[];        // How to invoke it
   principles: string[];                 // Operating principles
   metadata?: Record<string, any>;       // Domain-specific extensions (e.g. analyzerDomain)
 }
@@ -180,7 +180,7 @@ assistantRegistry.register(copilotAdapter);
 assistantRegistry.register(geminiAdapter);
 ```
 
-All entries from `forgeSummonableEntries` (in `summonables.ts`) are installed for every registered adapter.
+All entries from `forgePlugins` (in `summonables.ts`) are installed for every registered adapter.
 
 ## Installation Flow
 
@@ -196,7 +196,7 @@ installAssistantsCommand(cwd)
           → write forge.mjs entry wrapper
           → write VERSION, package.json
           → write forge-file-manifest.json
-      → for each SummonableEntry:
+      → for each ForgePlugin:
           → adapter.render(entry) → primary asset
           → adapter.getSupplementalAssets() → agents, workflows, skills
           → mergeManagedContent(rendered, existing)
@@ -281,8 +281,8 @@ Each analyzer domain (`discussions`, `issues`) has four components in `src/servi
 
 See `docs/adding-skill-agent-template.md` for the step-by-step template. Key requirements:
 
-1. Define a `SummonableEntry` in `summonables.ts` following the instructions contract above (tool approval, read-only enforcement, fallback scoping, guardrails, scope redirection).
-2. Add it to `forgeSummonableEntries`.
+1. Define a `ForgePlugin` in `summonables.ts` following the instructions contract above (tool approval, read-only enforcement, fallback scoping, guardrails, scope redirection).
+2. Add it to `forgePlugins`.
 3. If the domain is new (not discussions/issues), extend `getAnalyzerDomain()` and `getAnalyzerPromptContext()` in `runtime-rendering.ts`.
 4. Implement the backend in `src/services/{domain}/` (intent, fetch, prepare, analyze).
 5. Wire the `--run` dispatch in `program.ts`.

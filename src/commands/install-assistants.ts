@@ -4,7 +4,7 @@ import readline from 'node:readline/promises';
 import { assistantInstallService } from '../services/assistants/install.js';
 import { AssistantId, AssistantOperationResult } from '../contracts/assistants.js';
 import { forgeDiscussionAnalyzerEntry, forgeIssueAnalyzerEntry, forgePRReviewAnalyzerEntry } from '../services/assistants/summonables.js';
-import { getExposedSummonableName } from '../services/assistants/exposure.js';
+import { getExposedPluginName } from '../services/assistants/exposure.js';
 
 const DEFAULT_ASSISTANTS: AssistantId[] = ['copilot', 'claude', 'codex', 'gemini'];
 const INTERACTIVE_CHOICES: Array<{
@@ -132,15 +132,15 @@ function printInstallTargets(
 
 function buildSuccessMessage(assistantIds: AssistantId[]): string {
   const lines: string[] = ['Available Forge entrypoints:'];
-  const discussionSkill = getExposedSummonableName('codex', 'skill', forgeDiscussionAnalyzerEntry);
-  const issueSkill = getExposedSummonableName('codex', 'skill', forgeIssueAnalyzerEntry);
-  const prReviewSkill = getExposedSummonableName('codex', 'skill', forgePRReviewAnalyzerEntry);
-  const discussionClaudeCommand = getExposedSummonableName('claude', 'command', forgeDiscussionAnalyzerEntry);
-  const issueClaudeCommand = getExposedSummonableName('claude', 'command', forgeIssueAnalyzerEntry);
-  const prReviewClaudeCommand = getExposedSummonableName('claude', 'command', forgePRReviewAnalyzerEntry);
-  const discussionGeminiCommand = getExposedSummonableName('gemini', 'command', forgeDiscussionAnalyzerEntry);
-  const issueGeminiCommand = getExposedSummonableName('gemini', 'command', forgeIssueAnalyzerEntry);
-  const prReviewGeminiCommand = getExposedSummonableName('gemini', 'command', forgePRReviewAnalyzerEntry);
+  const discussionSkill = getExposedPluginName('codex', 'skill', forgeDiscussionAnalyzerEntry);
+  const issueSkill = getExposedPluginName('codex', 'skill', forgeIssueAnalyzerEntry);
+  const prReviewSkill = getExposedPluginName('codex', 'skill', forgePRReviewAnalyzerEntry);
+  const discussionClaudeCommand = getExposedPluginName('claude', 'command', forgeDiscussionAnalyzerEntry);
+  const issueClaudeCommand = getExposedPluginName('claude', 'command', forgeIssueAnalyzerEntry);
+  const prReviewClaudeCommand = getExposedPluginName('claude', 'command', forgePRReviewAnalyzerEntry);
+  const discussionGeminiCommand = getExposedPluginName('gemini', 'command', forgeDiscussionAnalyzerEntry);
+  const issueGeminiCommand = getExposedPluginName('gemini', 'command', forgeIssueAnalyzerEntry);
+  const prReviewGeminiCommand = getExposedPluginName('gemini', 'command', forgePRReviewAnalyzerEntry);
 
   if (assistantIds.includes('copilot')) {
     lines.push('- Copilot agents: `/agent forge-discussion-analyzer`, `/agent forge-issue-analyzer`, `/agent forge-pr-review-analyzer`');

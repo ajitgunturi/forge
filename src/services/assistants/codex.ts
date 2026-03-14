@@ -2,8 +2,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { AssistantAdapter, AssistantSupplementalAsset } from './registry.js';
 import { AssistantId, AssistantAvailability, AssistantInstallLayout } from '../../contracts/assistants.js';
-import { SummonableEntry } from '../../contracts/summonable-entry.js';
-import { getExposedSummonableName } from './exposure.js';
+import { ForgePlugin } from '../../contracts/forge-plugin.js';
+import { getExposedPluginName } from './exposure.js';
 import {
   getWorkflowFileName,
   renderCodexAgent,
@@ -36,11 +36,11 @@ export class CodexAdapter implements AssistantAdapter {
   /**
    * Codex uses ~/.codex/skills for user-level skill entrypoints.
    */
-  getInstallTarget(cwd: string, entry: SummonableEntry): string {
+  getInstallTarget(cwd: string, entry: ForgePlugin): string {
     const layout = this.resolveInstallLayout(cwd);
     return path.join(
       layout.skillsPath ?? path.join(layout.rootPath, 'skills'),
-      getExposedSummonableName(this.id, 'skill', entry),
+      getExposedPluginName(this.id, 'skill', entry),
       'SKILL.md',
     );
   }
@@ -63,7 +63,7 @@ export class CodexAdapter implements AssistantAdapter {
   /**
    * Renders the Codex skill entrypoint.
    */
-  render(entry: SummonableEntry): string {
+  render(entry: ForgePlugin): string {
     const layout = this.resolveInstallLayout('');
     const workflowPath = path.join(
       layout.workflowsPath ?? path.join(layout.rootPath, 'forge', 'workflows'),
@@ -72,9 +72,9 @@ export class CodexAdapter implements AssistantAdapter {
     return renderCodexSkill(entry, workflowPath);
   }
 
-  getSupplementalAssets(cwd: string, entry: SummonableEntry): AssistantSupplementalAsset[] {
+  getSupplementalAssets(cwd: string, entry: ForgePlugin): AssistantSupplementalAsset[] {
     const layout = this.resolveInstallLayout(cwd);
-    const agentName = getExposedSummonableName(this.id, 'agent', entry);
+    const agentName = getExposedPluginName(this.id, 'agent', entry);
     const runtimeEntryCommand = 'node "$HOME/.codex/forge/bin/forge.mjs"';
 
     return [
@@ -96,23 +96,23 @@ export class CodexAdapter implements AssistantAdapter {
     ];
   }
 
-  getAssetMigrationSources(cwd: string, entry: SummonableEntry): Record<string, string[]> {
+  getAssetMigrationSources(cwd: string, entry: ForgePlugin): Record<string, string[]> {
     const layout = this.resolveInstallLayout(cwd);
     return {
       [this.getInstallTarget(cwd, entry)]: [
-        path.join(cwd, '.codex', `${getExposedSummonableName('claude', 'command', entry)}.md`),
+        path.join(cwd, '.codex', `${getExposedPluginName('claude', 'command', entry)}.md`),
         path.join(cwd, '.codex', `${entry.id}.md`),
-        path.join(layout.rootPath, `${getExposedSummonableName('claude', 'command', entry)}.md`),
+        path.join(layout.rootPath, `${getExposedPluginName('claude', 'command', entry)}.md`),
         path.join(layout.rootPath, `${entry.id}.md`),
       ],
     };
   }
 
-  getObsoleteAssetPaths(cwd: string, entry: SummonableEntry): string[] {
+  getObsoleteAssetPaths(cwd: string, entry: ForgePlugin): string[] {
     return [
-      path.join(cwd, '.codex', `${getExposedSummonableName('claude', 'command', entry)}.md`),
+      path.join(cwd, '.codex', `${getExposedPluginName('claude', 'command', entry)}.md`),
       path.join(cwd, '.codex', `${entry.id}.md`),
-      path.join(this.resolveInstallLayout(cwd).rootPath, `${getExposedSummonableName('claude', 'command', entry)}.md`),
+      path.join(this.resolveInstallLayout(cwd).rootPath, `${getExposedPluginName('claude', 'command', entry)}.md`),
       path.join(this.resolveInstallLayout(cwd).rootPath, `${entry.id}.md`),
     ].filter((assetPath) => assetPath !== this.getInstallTarget(cwd, entry));
   }

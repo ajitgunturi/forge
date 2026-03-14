@@ -1,7 +1,7 @@
-import { SummonableEntry } from '../../contracts/summonable-entry.js';
+import { ForgePlugin } from '../../contracts/forge-plugin.js';
 import { COPILOT_RUNTIME_ENTRY } from './copilot.js';
 
-export const forgeDiscussionAnalyzerEntry: SummonableEntry = {
+export const forgeDiscussionAnalyzerEntry: ForgePlugin = {
   id: 'forge-discussion-analyzer',
   displayName: 'Forge Discussion Analyzer',
   purpose: 'Analyze GitHub Discussions for the current repository through Forge-managed live fetching and summary artifacts.',
@@ -53,7 +53,7 @@ export const forgeDiscussionAnalyzerEntry: SummonableEntry = {
   },
 };
 
-export const forgeIssueAnalyzerEntry: SummonableEntry = {
+export const forgeIssueAnalyzerEntry: ForgePlugin = {
   id: 'forge-issue-analyzer',
   displayName: 'Forge Issue Analyzer',
   purpose: 'Analyze GitHub Issues for the current repository through Forge-managed live fetching and summary artifacts.',
@@ -105,7 +105,7 @@ export const forgeIssueAnalyzerEntry: SummonableEntry = {
   },
 };
 
-export const forgePRReviewAnalyzerEntry: SummonableEntry = {
+export const forgePRReviewAnalyzerEntry: ForgePlugin = {
   id: 'forge-pr-review-analyzer',
   displayName: 'Forge PR Review Analyzer',
   purpose: 'Analyze GitHub Pull Request review comments for the current repository through Forge-managed live fetching and summary artifacts.',
@@ -159,7 +159,7 @@ export const forgePRReviewAnalyzerEntry: SummonableEntry = {
   },
 };
 
-export const forgeSummonableEntries: SummonableEntry[] = [
+export const forgePlugins: ForgePlugin[] = [
   forgeDiscussionAnalyzerEntry,
   forgeIssueAnalyzerEntry,
   forgePRReviewAnalyzerEntry,

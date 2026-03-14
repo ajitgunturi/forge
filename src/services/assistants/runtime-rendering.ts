@@ -1,6 +1,6 @@
-import { SummonableEntry } from '../../contracts/summonable-entry.js';
+import { ForgePlugin } from '../../contracts/forge-plugin.js';
 import { FORGE_MANAGED_END, FORGE_MANAGED_START, FORGE_USER_END, FORGE_USER_START } from './copilot.js';
-import { getExposedSummonableName, getSummonableRoute } from './exposure.js';
+import { getExposedPluginName, getPluginRoute } from './exposure.js';
 
 type AnalyzerDomain = 'discussions' | 'issues' | 'pr-reviews';
 
@@ -14,7 +14,7 @@ interface AnalyzerPromptContext {
   narrowingHint: string;
 }
 
-function getAnalyzerDomain(entry: SummonableEntry): AnalyzerDomain {
+function getAnalyzerDomain(entry: ForgePlugin): AnalyzerDomain {
   if (entry.metadata && typeof entry.metadata === 'object' && entry.metadata.analyzerDomain === 'issues') {
     return 'issues';
   }
@@ -24,7 +24,7 @@ function getAnalyzerDomain(entry: SummonableEntry): AnalyzerDomain {
   return 'discussions';
 }
 
-function getAnalyzerPromptContext(entry: SummonableEntry): AnalyzerPromptContext {
+function getAnalyzerPromptContext(entry: ForgePlugin): AnalyzerPromptContext {
   const domain = getAnalyzerDomain(entry);
   if (domain === 'issues') {
     return {
@@ -69,16 +69,16 @@ export function sanitizePlainScalar(value: string): string {
     .trim();
 }
 
-export function getWorkflowFileName(entry: SummonableEntry): string {
-  return `${getSummonableRoute(entry.id).localName}.md`;
+export function getWorkflowFileName(entry: ForgePlugin): string {
+  return `${getPluginRoute(entry.id).localName}.md`;
 }
 
-export function getCommandFileName(entry: SummonableEntry, extension: 'md' | 'toml'): string {
-  return `${getSummonableRoute(entry.id).localName}.${extension}`;
+export function getCommandFileName(entry: ForgePlugin, extension: 'md' | 'toml'): string {
+  return `${getPluginRoute(entry.id).localName}.${extension}`;
 }
 
-export function getCommandDirectoryName(entry: SummonableEntry): string {
-  return getSummonableRoute(entry.id).namespace ?? 'forge';
+export function getCommandDirectoryName(entry: ForgePlugin): string {
+  return getPluginRoute(entry.id).namespace ?? 'forge';
 }
 
 function renderManagedMarkdown(
@@ -110,7 +110,7 @@ function renderManagedMarkdown(
   ].join('\n');
 }
 
-function renderAnalyzerAgentPrompt(entry: SummonableEntry, runtimeEntryCommand: string): string {
+function renderAnalyzerAgentPrompt(entry: ForgePlugin, runtimeEntryCommand: string): string {
   const context = getAnalyzerPromptContext(entry);
   const runCommand = `${runtimeEntryCommand} --run ${entry.id} --question "<question>"`;
 
@@ -135,9 +135,9 @@ function renderAnalyzerAgentPrompt(entry: SummonableEntry, runtimeEntryCommand: 
   ].join('\n');
 }
 
-export function renderClaudeCommand(entry: SummonableEntry, workflowPath: string): string {
+export function renderClaudeCommand(entry: ForgePlugin, workflowPath: string): string {
   const context = getAnalyzerPromptContext(entry);
-  const commandName = sanitizePlainScalar(getExposedSummonableName('claude', 'command', entry));
+  const commandName = sanitizePlainScalar(getExposedPluginName('claude', 'command', entry));
   const workflowReference = `@${workflowPath}`;
   const body = [
     '<objective>',
@@ -178,10 +178,10 @@ export function renderClaudeCommand(entry: SummonableEntry, workflowPath: string
   );
 }
 
-export function renderClaudeAgent(entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderClaudeAgent(entry: ForgePlugin, runtimeEntryCommand: string): string {
   return renderManagedMarkdown(
     [
-      `name: ${sanitizePlainScalar(getExposedSummonableName('claude', 'agent', entry))}`,
+      `name: ${sanitizePlainScalar(getExposedPluginName('claude', 'agent', entry))}`,
       `description: ${sanitizePlainScalar(entry.purpose)}`,
       'tools: Bash, Read',
     ],
@@ -193,7 +193,7 @@ export function renderClaudeAgent(entry: SummonableEntry, runtimeEntryCommand: s
   );
 }
 
-export function renderClaudeWorkflow(_entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderClaudeWorkflow(_entry: ForgePlugin, runtimeEntryCommand: string): string {
   const context = getAnalyzerPromptContext(_entry);
   return [
     `# ${context.workflowTitle}`,
@@ -210,9 +210,9 @@ export function renderClaudeWorkflow(_entry: SummonableEntry, runtimeEntryComman
   ].join('\n');
 }
 
-export function renderCodexSkill(entry: SummonableEntry, workflowPath: string): string {
+export function renderCodexSkill(entry: ForgePlugin, workflowPath: string): string {
   const context = getAnalyzerPromptContext(entry);
-  const skillName = sanitizePlainScalar(getExposedSummonableName('codex', 'skill', entry));
+  const skillName = sanitizePlainScalar(getExposedPluginName('codex', 'skill', entry));
   const workflowReference = `@${workflowPath}`;
   const body = [
     '<codex_skill_adapter>',
@@ -256,16 +256,16 @@ export function renderCodexSkill(entry: SummonableEntry, workflowPath: string): 
   );
 }
 
-export function renderCodexAgent(entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderCodexAgent(entry: ForgePlugin, runtimeEntryCommand: string): string {
   const body = renderAnalyzerAgentPrompt(entry, runtimeEntryCommand);
   return renderManagedMarkdown(
     [
-      `name: "${sanitizePlainScalar(getExposedSummonableName('codex', 'agent', entry))}"`,
+      `name: "${sanitizePlainScalar(getExposedPluginName('codex', 'agent', entry))}"`,
       `description: "${sanitizePlainScalar(entry.purpose)}"`,
     ],
     [
       '<codex_agent_role>',
-      `role: ${sanitizePlainScalar(getExposedSummonableName('codex', 'agent', entry))}`,
+      `role: ${sanitizePlainScalar(getExposedPluginName('codex', 'agent', entry))}`,
       'tools: Read, Bash',
       `purpose: ${sanitizePlainScalar(entry.purpose)}`,
       '</codex_agent_role>',
@@ -275,7 +275,7 @@ export function renderCodexAgent(entry: SummonableEntry, runtimeEntryCommand: st
   );
 }
 
-export function renderCodexAgentToml(entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderCodexAgentToml(entry: ForgePlugin, runtimeEntryCommand: string): string {
   const context = getAnalyzerPromptContext(entry);
   const runCommand = `${runtimeEntryCommand} --run ${entry.id} --question "<question>"`;
   const body = [
@@ -303,11 +303,11 @@ export function renderCodexAgentToml(entry: SummonableEntry, runtimeEntryCommand
   ].join('\n');
 }
 
-export function renderCodexWorkflow(_entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderCodexWorkflow(_entry: ForgePlugin, runtimeEntryCommand: string): string {
   return renderClaudeWorkflow(_entry, runtimeEntryCommand);
 }
 
-export function renderGeminiCommand(entry: SummonableEntry, workflowPath: string): string {
+export function renderGeminiCommand(entry: ForgePlugin, workflowPath: string): string {
   const context = getAnalyzerPromptContext(entry);
   const backendCommand = `node "$HOME/.gemini/forge/bin/forge.mjs" --run ${entry.id} --question "<question>"`;
   const prompt = [
@@ -341,10 +341,10 @@ export function renderGeminiCommand(entry: SummonableEntry, workflowPath: string
   ].join('\n');
 }
 
-export function renderGeminiAgent(entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderGeminiAgent(entry: ForgePlugin, runtimeEntryCommand: string): string {
   return renderManagedMarkdown(
     [
-      `name: ${sanitizePlainScalar(getExposedSummonableName('gemini', 'agent', entry))}`,
+      `name: ${sanitizePlainScalar(getExposedPluginName('gemini', 'agent', entry))}`,
       `description: ${sanitizePlainScalar(entry.purpose)}`,
       'tools:',
       '  - read_file',
@@ -358,6 +358,6 @@ export function renderGeminiAgent(entry: SummonableEntry, runtimeEntryCommand: s
   );
 }
 
-export function renderGeminiWorkflow(_entry: SummonableEntry, runtimeEntryCommand: string): string {
+export function renderGeminiWorkflow(_entry: ForgePlugin, runtimeEntryCommand: string): string {
   return renderClaudeWorkflow(_entry, runtimeEntryCommand);
 }

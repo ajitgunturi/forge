@@ -1,5 +1,5 @@
 import { AssistantId, AssistantAvailability, AssistantOperationResult, AssistantCapability, AssistantInstallLayout } from '../../contracts/assistants.js';
-import { SummonableEntry } from '../../contracts/summonable-entry.js';
+import { ForgePlugin } from '../../contracts/forge-plugin.js';
 import { claudeAdapter } from './claude.js';
 import { codexAdapter } from './codex.js';
 import { copilotAdapter } from './copilot.js';
@@ -25,22 +25,22 @@ export interface AssistantAdapter {
   checkAvailability(): Promise<AssistantAvailability>;
   
   /** Gets the target path for installing a summonable entry for this assistant */
-  getInstallTarget(cwd: string, entry: SummonableEntry): string;
+  getInstallTarget(cwd: string, entry: ForgePlugin): string;
 
   /** Resolves install directories and runtime locations for this assistant */
   resolveInstallLayout(cwd: string): AssistantInstallLayout;
   
   /** Renders the assistant-agnostic entry into the native format for this assistant */
-  render(entry: SummonableEntry): string;
+  render(entry: ForgePlugin): string;
 
   /** Optional supplemental assets (for example, skills) that should be installed alongside the primary entry */
-  getSupplementalAssets?(cwd: string, entry: SummonableEntry): AssistantSupplementalAsset[];
+  getSupplementalAssets?(cwd: string, entry: ForgePlugin): AssistantSupplementalAsset[];
 
   /** Optional legacy asset files whose preserved user content should seed the new asset path on migration */
-  getAssetMigrationSources?(cwd: string, entry: SummonableEntry): Record<string, string[]>;
+  getAssetMigrationSources?(cwd: string, entry: ForgePlugin): Record<string, string[]>;
 
   /** Optional obsolete assets that should be removed after a successful install */
-  getObsoleteAssetPaths?(cwd: string, entry: SummonableEntry): string[];
+  getObsoleteAssetPaths?(cwd: string, entry: ForgePlugin): string[];
 
   /** Optional empty directories that should be pruned after a successful install */
   getObsoleteDirectoryPaths?(cwd: string): string[];
