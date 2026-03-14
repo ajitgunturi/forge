@@ -3,7 +3,7 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { assistantInstallService } from '../services/assistants/install.js';
 import { AssistantId, AssistantOperationResult } from '../contracts/assistants.js';
-import { forgeDiscussionAnalyzerEntry, forgeIssueAnalyzerEntry } from '../services/assistants/summonables.js';
+import { forgeDiscussionAnalyzerEntry, forgeIssueAnalyzerEntry, forgePRReviewAnalyzerEntry } from '../services/assistants/summonables.js';
 import { getExposedSummonableName } from '../services/assistants/exposure.js';
 
 const DEFAULT_ASSISTANTS: AssistantId[] = ['copilot', 'claude', 'codex', 'gemini'];
@@ -134,26 +134,29 @@ function buildSuccessMessage(assistantIds: AssistantId[]): string {
   const lines: string[] = ['Available Forge entrypoints:'];
   const discussionSkill = getExposedSummonableName('codex', 'skill', forgeDiscussionAnalyzerEntry);
   const issueSkill = getExposedSummonableName('codex', 'skill', forgeIssueAnalyzerEntry);
+  const prReviewSkill = getExposedSummonableName('codex', 'skill', forgePRReviewAnalyzerEntry);
   const discussionClaudeCommand = getExposedSummonableName('claude', 'command', forgeDiscussionAnalyzerEntry);
   const issueClaudeCommand = getExposedSummonableName('claude', 'command', forgeIssueAnalyzerEntry);
+  const prReviewClaudeCommand = getExposedSummonableName('claude', 'command', forgePRReviewAnalyzerEntry);
   const discussionGeminiCommand = getExposedSummonableName('gemini', 'command', forgeDiscussionAnalyzerEntry);
   const issueGeminiCommand = getExposedSummonableName('gemini', 'command', forgeIssueAnalyzerEntry);
+  const prReviewGeminiCommand = getExposedSummonableName('gemini', 'command', forgePRReviewAnalyzerEntry);
 
   if (assistantIds.includes('copilot')) {
-    lines.push('- Copilot agents: `/agent forge-discussion-analyzer`, `/agent forge-issue-analyzer`');
-    lines.push('- Copilot skills (gh copilot): `forge-discussion-analyzer`, `forge-issue-analyzer`');
+    lines.push('- Copilot agents: `/agent forge-discussion-analyzer`, `/agent forge-issue-analyzer`, `/agent forge-pr-review-analyzer`');
+    lines.push('- Copilot skills (gh copilot): `forge-discussion-analyzer`, `forge-issue-analyzer`, `forge-pr-review-analyzer`');
   }
 
   if (assistantIds.includes('claude')) {
-    lines.push(`- Claude commands: \`${discussionClaudeCommand}\`, \`${issueClaudeCommand}\``);
+    lines.push(`- Claude commands: \`${discussionClaudeCommand}\`, \`${issueClaudeCommand}\`, \`${prReviewClaudeCommand}\``);
   }
 
   if (assistantIds.includes('codex')) {
-    lines.push(`- Codex skills: \`$${discussionSkill}\`, \`$${issueSkill}\``);
+    lines.push(`- Codex skills: \`$${discussionSkill}\`, \`$${issueSkill}\`, \`$${prReviewSkill}\``);
   }
 
   if (assistantIds.includes('gemini')) {
-    lines.push(`- Gemini commands: \`${discussionGeminiCommand}\`, \`${issueGeminiCommand}\``);
+    lines.push(`- Gemini commands: \`${discussionGeminiCommand}\`, \`${issueGeminiCommand}\`, \`${prReviewGeminiCommand}\``);
   }
 
   return lines.length > 1

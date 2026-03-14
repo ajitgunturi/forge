@@ -2,7 +2,7 @@ import { SummonableEntry } from '../../contracts/summonable-entry.js';
 import { FORGE_MANAGED_END, FORGE_MANAGED_START, FORGE_USER_END, FORGE_USER_START } from './copilot.js';
 import { getExposedSummonableName, getSummonableRoute } from './exposure.js';
 
-type AnalyzerDomain = 'discussions' | 'issues';
+type AnalyzerDomain = 'discussions' | 'issues' | 'pr-reviews';
 
 interface AnalyzerPromptContext {
   analyzerDescription: string;
@@ -18,6 +18,9 @@ function getAnalyzerDomain(entry: SummonableEntry): AnalyzerDomain {
   if (entry.metadata && typeof entry.metadata === 'object' && entry.metadata.analyzerDomain === 'issues') {
     return 'issues';
   }
+  if (entry.metadata && typeof entry.metadata === 'object' && entry.metadata.analyzerDomain === 'pr-reviews') {
+    return 'pr-reviews';
+  }
   return 'discussions';
 }
 
@@ -32,6 +35,18 @@ function getAnalyzerPromptContext(entry: SummonableEntry): AnalyzerPromptContext
       subjectSingularLower: 'issue',
       counterpartPlural: 'GitHub Discussions',
       narrowingHint: 'label, state, relative windows, or explicit after/before dates',
+    };
+  }
+
+  if (domain === 'pr-reviews') {
+    return {
+      analyzerDescription: 'Analyze GitHub Pull Request review comments for the current repository through Forge-managed live fetching and summary artifacts.',
+      workflowTitle: 'Forge PR Review Analyzer Workflow',
+      roleName: 'Forge PR Review Analyzer',
+      subjectPlural: 'GitHub Pull Request Reviews',
+      subjectSingularLower: 'pull request review',
+      counterpartPlural: 'GitHub Issues and Discussions',
+      narrowingHint: 'PR number, reviewer username, relative windows, or explicit after/before dates',
     };
   }
 
@@ -110,9 +125,10 @@ function renderAnalyzerAgentPrompt(entry: SummonableEntry, runtimeEntryCommand: 
     `- If the user asks about ${context.counterpartPlural}, explain that this analyzer only covers ${context.subjectPlural} and stop.`,
     `- Run \`${runCommand}\` directly instead of delegating to unrelated helpers.`,
     `- Every query must use a live fetch through Forge; never answer from local cached ${context.subjectSingularLower} summaries alone.`,
-    '- Ask for approval once for the Forge command, then let Forge handle fetch plus analysis.',
+    '- Allow all tool executions (Bash, Read, python3, node, and `gh` CLI) needed to fetch and present the analysis without repeated approval prompts. Approve the full analysis pipeline up front.',
+    '- This analyzer is strictly read-only. Never create, update, close, comment on, or mutate any GitHub resource.',
     '- Do not run npm install or repair Forge dependencies.',
-    '- If Forge fails or times out because of network or GitHub API issues, fall back to `gh` CLI to fetch the data directly.',
+    '- If Forge fails or times out because of network or GitHub API issues, fall back to read-only `gh` CLI commands (e.g. `gh issue list`, `gh issue view`) to fetch the data. Never run mutation commands such as `gh issue create`, `gh issue close`, `gh issue comment`, `gh pr merge`, or `gh api` with write methods.',
     '- Delegate data acquisition, filtering, preprocessing, and freshness handling to Forge.',
     `- Suggest narrowing by ${context.narrowingHint} when the user needs a smaller slice.`,
     '</instructions>',
@@ -187,9 +203,10 @@ export function renderClaudeWorkflow(_entry: SummonableEntry, runtimeEntryComman
     'Execution rules:',
     `- Every query must use Forge live fetches; do not answer from local ${context.subjectSingularLower} summary content alone.`,
     `- If the request is about ${context.counterpartPlural} instead of ${context.subjectPlural}, explain that this workflow only covers ${context.subjectPlural} and stop.`,
-    '- Ask for approval once for the Forge command, then let Forge handle fetch plus analysis.',
+    '- Allow all tool executions (Bash, Read, python3, node, and `gh` CLI) needed to fetch and present the analysis without repeated approval prompts. Approve the full analysis pipeline up front.',
+    '- This workflow is strictly read-only. Never create, update, close, comment on, or mutate any GitHub resource.',
     '- Do not run npm install or repair Forge dependencies.',
-    '- If Forge fails or times out because of network or GitHub API issues, fall back to `gh` CLI to fetch the data directly.',
+    '- If Forge fails or times out because of network or GitHub API issues, fall back to read-only `gh` CLI commands (e.g. `gh issue list`, `gh issue view`) to fetch the data. Never run mutation commands such as `gh issue create`, `gh issue close`, `gh issue comment`, `gh pr merge`, or `gh api` with write methods.',
   ].join('\n');
 }
 
@@ -272,9 +289,10 @@ export function renderCodexAgentToml(entry: SummonableEntry, runtimeEntryCommand
     `- If the user asks about ${context.counterpartPlural}, explain that this analyzer only covers ${context.subjectPlural} and stop.`,
     `- Run \`${runCommand}\` directly instead of delegating to unrelated helpers.`,
     '- Every query must use a live fetch through Forge; never answer from local cached summaries alone.',
-    '- Ask for approval once for the Forge command, then let Forge handle fetch plus analysis.',
+    '- Allow all tool executions (Bash, Read, python3, node, and `gh` CLI) needed to fetch and present the analysis without repeated approval prompts. Approve the full analysis pipeline up front.',
+    '- This analyzer is strictly read-only. Never create, update, close, comment on, or mutate any GitHub resource.',
     '- Do not run npm install or repair Forge dependencies.',
-    '- If Forge fails or times out because of network or GitHub API issues, fall back to `gh` CLI to fetch the data directly.',
+    '- If Forge fails or times out because of network or GitHub API issues, fall back to read-only `gh` CLI commands (e.g. `gh issue list`, `gh issue view`) to fetch the data. Never run mutation commands such as `gh issue create`, `gh issue close`, `gh issue comment`, `gh pr merge`, or `gh api` with write methods.',
     '</instructions>',
   ].join('\n');
 
@@ -308,9 +326,11 @@ export function renderGeminiCommand(entry: SummonableEntry, workflowPath: string
     `If $ARGUMENTS is empty or still appears as the literal placeholder "$ARGUMENTS", ask the user for a concrete ${context.subjectPlural} question and stop.`,
     'Do not inspect the codebase, search the repository, or read files under ~/.gemini before deciding what to do.',
     'Run the Forge backend directly from the current repository once you have a concrete question.',
+    'Allow all tool executions (shell commands, python3, node, and `gh` CLI) needed to fetch and present the analysis without repeated approval prompts.',
     'Preserve the live-fetch-only behavior for every query.',
     `If the request is about ${context.counterpartPlural} instead of ${context.subjectPlural}, explain that limitation and stop.`,
-    'If Forge fails or times out because of network, auth, or GitHub API issues, fall back to `gh` CLI to fetch the data directly.',
+    'This workflow is strictly read-only — never create, update, close, comment on, or mutate any GitHub resource.',
+    'If Forge fails or times out because of network, auth, or GitHub API issues, fall back to read-only `gh` CLI commands (e.g. `gh issue list`, `gh issue view`) to fetch the data. Never run mutation commands such as `gh issue create`, `gh issue close`, `gh issue comment`, `gh pr merge`, or `gh api` with write methods.',
     '</process>',
   ].join('\n');
 
