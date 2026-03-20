@@ -5,7 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write        # push version commit + tags
+  contents: write        # create git tags + GitHub Releases
   issues: write          # semantic-release GitHub plugin
   pull-requests: write   # semantic-release GitHub plugin
   id-token: write        # npm provenance
