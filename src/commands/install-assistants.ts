@@ -3,7 +3,7 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { assistantInstallService } from '../services/assistants/install.js';
 import { AssistantId, AssistantOperationResult } from '../contracts/assistants.js';
-import { forgeDiscussionAnalyzerEntry, forgeIssueAnalyzerEntry, forgePRReviewAnalyzerEntry } from '../services/assistants/summonables.js';
+import { forgeDiscussionAnalyzerEntry, forgeIssueAnalyzerEntry, forgePRCommentsAnalyzerEntry } from '../services/assistants/summonables.js';
 import { getExposedPluginName } from '../services/assistants/exposure.js';
 
 const DEFAULT_ASSISTANTS: AssistantId[] = ['copilot', 'claude', 'codex', 'gemini'];
@@ -134,13 +134,13 @@ function buildSuccessMessage(assistantIds: AssistantId[]): string {
   const lines: string[] = ['Available Forge entrypoints:'];
   const discussionSkill = getExposedPluginName('codex', 'skill', forgeDiscussionAnalyzerEntry);
   const issueSkill = getExposedPluginName('codex', 'skill', forgeIssueAnalyzerEntry);
-  const prReviewSkill = getExposedPluginName('codex', 'skill', forgePRReviewAnalyzerEntry);
+  const prReviewSkill = getExposedPluginName('codex', 'skill', forgePRCommentsAnalyzerEntry);
   const discussionClaudeCommand = getExposedPluginName('claude', 'command', forgeDiscussionAnalyzerEntry);
   const issueClaudeCommand = getExposedPluginName('claude', 'command', forgeIssueAnalyzerEntry);
-  const prReviewClaudeCommand = getExposedPluginName('claude', 'command', forgePRReviewAnalyzerEntry);
+  const prReviewClaudeCommand = getExposedPluginName('claude', 'command', forgePRCommentsAnalyzerEntry);
   const discussionGeminiCommand = getExposedPluginName('gemini', 'command', forgeDiscussionAnalyzerEntry);
   const issueGeminiCommand = getExposedPluginName('gemini', 'command', forgeIssueAnalyzerEntry);
-  const prReviewGeminiCommand = getExposedPluginName('gemini', 'command', forgePRReviewAnalyzerEntry);
+  const prReviewGeminiCommand = getExposedPluginName('gemini', 'command', forgePRCommentsAnalyzerEntry);
 
   if (assistantIds.includes('copilot')) {
     lines.push('- Copilot agents: `/agent forge-discussion-analyzer`, `/agent forge-issue-analyzer`, `/agent forge-pr-comments-analyzer`');

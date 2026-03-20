@@ -101,7 +101,7 @@ export const forgeIssueAnalyzerEntry: ForgePlugin = {
   },
 };
 
-export const forgePRReviewAnalyzerEntry: ForgePlugin = {
+export const forgePRCommentsAnalyzerEntry: ForgePlugin = {
   id: 'forge-pr-comments-analyzer',
   displayName: 'Forge PR Comments Analyzer',
   purpose: 'Analyze GitHub Pull Request review comments for the current repository using read-only gh CLI live fetches.',
@@ -156,5 +156,5 @@ export const forgePRReviewAnalyzerEntry: ForgePlugin = {
 export const forgePlugins: ForgePlugin[] = [
   forgeDiscussionAnalyzerEntry,
   forgeIssueAnalyzerEntry,
-  forgePRReviewAnalyzerEntry,
+  forgePRCommentsAnalyzerEntry,
 ];

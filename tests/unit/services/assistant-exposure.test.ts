@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   forgeDiscussionAnalyzerEntry,
   forgeIssueAnalyzerEntry,
-  forgePRReviewAnalyzerEntry,
+  forgePRCommentsAnalyzerEntry,
 } from '../../../src/services/assistants/summonables.js';
 import { getExposedPluginName, getPluginRoute, toNamespacedPluginName } from '../../../src/services/assistants/exposure.js';
 
@@ -10,13 +10,13 @@ describe('assistant exposure naming', () => {
   it('keeps the runtime id stable while command runtimes use the namespaced command alias', () => {
     expect(forgeDiscussionAnalyzerEntry.id).toBe('forge-discussion-analyzer');
     expect(forgeIssueAnalyzerEntry.id).toBe('forge-issue-analyzer');
-    expect(forgePRReviewAnalyzerEntry.id).toBe('forge-pr-comments-analyzer');
+    expect(forgePRCommentsAnalyzerEntry.id).toBe('forge-pr-comments-analyzer');
     expect(getExposedPluginName('claude', 'command', forgeDiscussionAnalyzerEntry)).toBe('forge:discussion-analyzer');
     expect(getExposedPluginName('gemini', 'command', forgeDiscussionAnalyzerEntry)).toBe('forge:discussion-analyzer');
     expect(getExposedPluginName('claude', 'command', forgeIssueAnalyzerEntry)).toBe('forge:issue-analyzer');
     expect(getExposedPluginName('gemini', 'command', forgeIssueAnalyzerEntry)).toBe('forge:issue-analyzer');
-    expect(getExposedPluginName('claude', 'command', forgePRReviewAnalyzerEntry)).toBe('forge:pr-comments-analyzer');
-    expect(getExposedPluginName('gemini', 'command', forgePRReviewAnalyzerEntry)).toBe('forge:pr-comments-analyzer');
+    expect(getExposedPluginName('claude', 'command', forgePRCommentsAnalyzerEntry)).toBe('forge:pr-comments-analyzer');
+    expect(getExposedPluginName('gemini', 'command', forgePRCommentsAnalyzerEntry)).toBe('forge:pr-comments-analyzer');
   });
 
   it('keeps agent and skill ids stable for Copilot, Codex, and Claude agents', () => {
@@ -28,9 +28,9 @@ describe('assistant exposure naming', () => {
     expect(getExposedPluginName('copilot', 'skill', forgeIssueAnalyzerEntry)).toBe('forge-issue-analyzer');
     expect(getExposedPluginName('codex', 'skill', forgeIssueAnalyzerEntry)).toBe('forge-issue-analyzer');
     expect(getExposedPluginName('claude', 'agent', forgeIssueAnalyzerEntry)).toBe('forge-issue-analyzer');
-    expect(getExposedPluginName('copilot', 'agent', forgePRReviewAnalyzerEntry)).toBe('forge-pr-comments-analyzer');
-    expect(getExposedPluginName('codex', 'skill', forgePRReviewAnalyzerEntry)).toBe('forge-pr-comments-analyzer');
-    expect(getExposedPluginName('claude', 'agent', forgePRReviewAnalyzerEntry)).toBe('forge-pr-comments-analyzer');
+    expect(getExposedPluginName('copilot', 'agent', forgePRCommentsAnalyzerEntry)).toBe('forge-pr-comments-analyzer');
+    expect(getExposedPluginName('codex', 'skill', forgePRCommentsAnalyzerEntry)).toBe('forge-pr-comments-analyzer');
+    expect(getExposedPluginName('claude', 'agent', forgePRCommentsAnalyzerEntry)).toBe('forge-pr-comments-analyzer');
   });
 
   it('derives the command path route and converts only the leading namespace separator', () => {
