@@ -5,6 +5,12 @@ import {
   renderInteractiveInstallerScreen,
   resolveInteractiveAssistantChoice,
 } from '../../../src/commands/install-assistants.js';
+import {
+  forgeCorePlugins,
+  forgeElevatePlugins,
+  forgePlugins,
+  resolvePluginGroups,
+} from '../../../src/services/assistants/summonables.js';
 
 describe('interactive installer screen', () => {
   it('renders the branded installer header and runtime choices', () => {
@@ -33,6 +39,27 @@ describe('interactive installer screen', () => {
     expect(buildInteractiveInstallSummary(['codex'])).toContain('Installing for Codex');
     expect(buildInteractiveInstallSummary(['codex'])).toContain('~/.codex');
     expect(buildInteractiveInstallSummary(['copilot', 'claude', 'codex', 'gemini'])).toContain('Installing Forge globally');
+  });
+
+  it('resolves plugin groups to the correct plugin sets', () => {
+    expect(resolvePluginGroups(['core'])).toEqual(forgeCorePlugins);
+    expect(resolvePluginGroups(['elevate'])).toEqual(forgeElevatePlugins);
+    expect(resolvePluginGroups(['core', 'elevate'])).toEqual(forgePlugins);
+    expect(resolvePluginGroups([])).toEqual([]);
+
+    expect(forgeCorePlugins).toHaveLength(3);
+    expect(forgeElevatePlugins).toHaveLength(3);
+    expect(forgePlugins).toHaveLength(6);
+
+    const coreIds = forgeCorePlugins.map((p) => p.id);
+    expect(coreIds).toContain('forge-discussion-analyzer');
+    expect(coreIds).toContain('forge-issue-analyzer');
+    expect(coreIds).toContain('forge-pr-comments-analyzer');
+
+    const elevateIds = forgeElevatePlugins.map((p) => p.id);
+    expect(elevateIds).toContain('forge-commit-craft-coach');
+    expect(elevateIds).toContain('forge-pr-architect');
+    expect(elevateIds).toContain('forge-review-quality-coach');
   });
 
   it('builds interactive result checklists for installer output', () => {

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { assistantRegistry, AssistantAdapter, AssistantSupplementalAsset } from './registry.js';
 import { AssistantId, AssistantInstallLayout, AssistantOperationResult } from '../../contracts/assistants.js';
 import { ForgePlugin } from '../../contracts/forge-plugin.js';
-import { forgePlugins } from './summonables.js';
+import { forgePlugins, PluginGroup, resolvePluginGroups } from './summonables.js';
 import {
   FORGE_MANAGED_END,
   FORGE_MANAGED_START,
@@ -44,12 +44,22 @@ export class AssistantInstallService {
     return this.installEntriesSelected(cwd, [entry], assistantIds);
   }
 
-  async installDefaultSummonables(cwd: string, assistantIds: AssistantId[]): Promise<AssistantOperationResult[]> {
-    return this.installEntriesSelected(cwd, forgePlugins, assistantIds);
+  async installDefaultSummonables(
+    cwd: string,
+    assistantIds: AssistantId[],
+    pluginGroups?: PluginGroup[],
+  ): Promise<AssistantOperationResult[]> {
+    const plugins = pluginGroups ? resolvePluginGroups(pluginGroups) : forgePlugins;
+    return this.installEntriesSelected(cwd, plugins, assistantIds);
   }
 
-  async uninstallDefaultSummonables(cwd: string, assistantIds: AssistantId[]): Promise<AssistantOperationResult[]> {
-    return this.uninstallEntriesSelected(cwd, forgePlugins, assistantIds);
+  async uninstallDefaultSummonables(
+    cwd: string,
+    assistantIds: AssistantId[],
+    pluginGroups?: PluginGroup[],
+  ): Promise<AssistantOperationResult[]> {
+    const plugins = pluginGroups ? resolvePluginGroups(pluginGroups) : forgePlugins;
+    return this.uninstallEntriesSelected(cwd, plugins, assistantIds);
   }
 
   async installEntriesSelected(

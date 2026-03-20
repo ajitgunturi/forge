@@ -71,7 +71,12 @@ Every plugin must include:
 ### `metadata.analyzerDomain`
 
 `metadata.analyzerDomain` drives prompt wording in `src/services/assistants/runtime-rendering.ts`.
-Current values are `'discussions'`, `'issues'`, and `'pr-reviews'`.
+Current values are `'discussions'`, `'issues'`, `'pr-reviews'`, `'commit-craft'`, `'pr-architecture'`, and `'review-quality'`.
+
+The first three are data-surfacing analyzers (using `gh` CLI). The last three are coaching-oriented plugins that interpret patterns and guide developers:
+- `commit-craft`: Uses `git log` / `git diff --stat` to coach on commit quality and conventions.
+- `pr-architecture`: Uses `gh pr list --json` / `gh pr view --json` to coach on PR structure and reviewability.
+- `review-quality`: Uses `gh api` pulls endpoints to coach on code review depth and actionability.
 
 ## Assistant Layouts
 

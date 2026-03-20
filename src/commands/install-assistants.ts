@@ -3,7 +3,15 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { assistantInstallService } from '../services/assistants/install.js';
 import { AssistantId, AssistantOperationResult } from '../contracts/assistants.js';
-import { forgeDiscussionAnalyzerEntry, forgeIssueAnalyzerEntry, forgePRCommentsAnalyzerEntry } from '../services/assistants/summonables.js';
+import {
+  forgeDiscussionAnalyzerEntry,
+  forgeIssueAnalyzerEntry,
+  forgePRCommentsAnalyzerEntry,
+  forgeCommitCraftCoachEntry,
+  forgePRArchitectEntry,
+  forgeReviewQualityCoachEntry,
+  PluginGroup,
+} from '../services/assistants/summonables.js';
 import { getExposedPluginName } from '../services/assistants/exposure.js';
 
 const DEFAULT_ASSISTANTS: AssistantId[] = ['copilot', 'claude', 'codex', 'gemini'];
@@ -31,17 +39,20 @@ type InstallStyling = {
 /**
  * Handles the CLI surface for installing the currently exposed Forge assistant assets.
  */
+const DEFAULT_PLUGIN_GROUPS: PluginGroup[] = ['core'];
+
 export async function installAssistantsCommand(
   cwd: string,
-  options: { verbose?: boolean; assistants?: AssistantId[]; version?: string } = {},
+  options: { verbose?: boolean; assistants?: AssistantId[]; pluginGroups?: PluginGroup[]; version?: string } = {},
 ): Promise<void> {
   try {
     const interactive = !options.assistants && process.stdin.isTTY && process.stdout.isTTY;
     const styling = createInstallStyling(interactive);
     const requestedAssistants = options.assistants ?? await resolveAssistantSelection(options.version, styling);
+    const pluginGroups = options.pluginGroups ?? DEFAULT_PLUGIN_GROUPS;
     printInstallTargets(requestedAssistants, cwd, { interactive, styling });
 
-    const results = await assistantInstallService.installDefaultSummonables(cwd, requestedAssistants);
+    const results = await assistantInstallService.installDefaultSummonables(cwd, requestedAssistants, pluginGroups);
 
     let hasSuccess = false;
     for (const result of results) {
@@ -62,7 +73,7 @@ export async function installAssistantsCommand(
     }
     
     if (hasSuccess) {
-      const successMessage = buildSuccessMessage(requestedAssistants);
+      const successMessage = buildSuccessMessage(requestedAssistants, pluginGroups);
       if (interactive) {
         console.log(`\n${styling.green('Done!')}`);
         console.log(successMessage);
@@ -130,33 +141,57 @@ function printInstallTargets(
   }
 }
 
-function buildSuccessMessage(assistantIds: AssistantId[]): string {
+function buildSuccessMessage(assistantIds: AssistantId[], pluginGroups: PluginGroup[] = DEFAULT_PLUGIN_GROUPS): string {
   const lines: string[] = ['Available Forge entrypoints:'];
-  const discussionSkill = getExposedPluginName('codex', 'skill', forgeDiscussionAnalyzerEntry);
-  const issueSkill = getExposedPluginName('codex', 'skill', forgeIssueAnalyzerEntry);
-  const prReviewSkill = getExposedPluginName('codex', 'skill', forgePRCommentsAnalyzerEntry);
-  const discussionClaudeCommand = getExposedPluginName('claude', 'command', forgeDiscussionAnalyzerEntry);
-  const issueClaudeCommand = getExposedPluginName('claude', 'command', forgeIssueAnalyzerEntry);
-  const prReviewClaudeCommand = getExposedPluginName('claude', 'command', forgePRCommentsAnalyzerEntry);
-  const discussionGeminiCommand = getExposedPluginName('gemini', 'command', forgeDiscussionAnalyzerEntry);
-  const issueGeminiCommand = getExposedPluginName('gemini', 'command', forgeIssueAnalyzerEntry);
-  const prReviewGeminiCommand = getExposedPluginName('gemini', 'command', forgePRCommentsAnalyzerEntry);
+  const hasCore = pluginGroups.includes('core');
+  const hasElevate = pluginGroups.includes('elevate');
+
+  const coreAgents = hasCore
+    ? ['forge-discussion-analyzer', 'forge-issue-analyzer', 'forge-pr-comments-analyzer']
+    : [];
+  const elevateAgents = hasElevate
+    ? ['forge-commit-craft-coach', 'forge-pr-architect', 'forge-review-quality-coach']
+    : [];
+  const allAgents = [...coreAgents, ...elevateAgents];
+
+  const coreEntries = hasCore
+    ? [forgeDiscussionAnalyzerEntry, forgeIssueAnalyzerEntry, forgePRCommentsAnalyzerEntry]
+    : [];
+  const elevateEntries = hasElevate
+    ? [forgeCommitCraftCoachEntry, forgePRArchitectEntry, forgeReviewQualityCoachEntry]
+    : [];
+  const allEntries = [...coreEntries, ...elevateEntries];
+
+  if (allAgents.length === 0) {
+    return 'Forge assistant assets are ready.';
+  }
 
   if (assistantIds.includes('copilot')) {
-    lines.push('- Copilot agents: `/agent forge-discussion-analyzer`, `/agent forge-issue-analyzer`, `/agent forge-pr-comments-analyzer`');
-    lines.push('- Copilot skills (gh copilot): `forge-discussion-analyzer`, `forge-issue-analyzer`, `forge-pr-comments-analyzer`');
+    const agentNames = allAgents.map((name) => `/agent ${name}`).join('`, `');
+    lines.push(`- Copilot agents: \`${agentNames}\``);
+    const skillNames = allAgents.join('`, `');
+    lines.push(`- Copilot skills (gh copilot): \`${skillNames}\``);
   }
 
   if (assistantIds.includes('claude')) {
-    lines.push(`- Claude commands: \`${discussionClaudeCommand}\`, \`${issueClaudeCommand}\`, \`${prReviewClaudeCommand}\``);
+    const commandNames = allEntries.map((e) => getExposedPluginName('claude', 'command', e)).join('`, `');
+    lines.push(`- Claude commands: \`${commandNames}\``);
   }
 
   if (assistantIds.includes('codex')) {
-    lines.push(`- Codex skills: \`$${discussionSkill}\`, \`$${issueSkill}\`, \`$${prReviewSkill}\``);
+    const skillNames = allEntries.map((e) => `$${getExposedPluginName('codex', 'skill', e)}`).join('`, `');
+    lines.push(`- Codex skills: \`${skillNames}\``);
   }
 
   if (assistantIds.includes('gemini')) {
-    lines.push(`- Gemini commands: \`${discussionGeminiCommand}\`, \`${issueGeminiCommand}\`, \`${prReviewGeminiCommand}\``);
+    const commandNames = allEntries.map((e) => getExposedPluginName('gemini', 'command', e)).join('`, `');
+    lines.push(`- Gemini commands: \`${commandNames}\``);
+  }
+
+  if (hasCore && !hasElevate) {
+    lines.push('');
+    lines.push('Level up with Forge Elevate plugins (commit coaching, PR architecture, review quality):');
+    lines.push('  npx forge-ai-assist@latest --plugins elevate');
   }
 
   return lines.length > 1

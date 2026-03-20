@@ -63,6 +63,47 @@ describe('Claude assistant translation', () => {
     await expect(access(join(tempHomePath, '.claude/skills/forge:discussion-analyzer/SKILL.md'))).rejects.toThrow();
   });
 
+  it('renders Claude assets for coaching plugins with domain-specific guidance', async () => {
+    const [result] = await assistantInstallService.installDefaultSummonables(tempRepoPath, ['claude']);
+    const commitCommandPath = join(tempHomePath, '.claude/commands/forge/commit-craft-coach.md');
+    const commitAgentPath = join(tempHomePath, '.claude/agents/forge-commit-craft-coach.md');
+    const commitWorkflowPath = join(tempHomePath, '.claude/forge/workflows/commit-craft-coach.md');
+    const prArchCommandPath = join(tempHomePath, '.claude/commands/forge/pr-architect.md');
+    const prArchAgentPath = join(tempHomePath, '.claude/agents/forge-pr-architect.md');
+    const reviewCommandPath = join(tempHomePath, '.claude/commands/forge/review-quality-coach.md');
+    const reviewAgentPath = join(tempHomePath, '.claude/agents/forge-review-quality-coach.md');
+
+    expect(result.status).toBe('success');
+
+    const commitCommand = await readFile(commitCommandPath, 'utf8');
+    const commitAgent = await readFile(commitAgentPath, 'utf8');
+    const commitWorkflow = await readFile(commitWorkflowPath, 'utf8');
+    const prArchCommand = await readFile(prArchCommandPath, 'utf8');
+    const prArchAgent = await readFile(prArchAgentPath, 'utf8');
+    const reviewCommand = await readFile(reviewCommandPath, 'utf8');
+    const reviewAgent = await readFile(reviewAgentPath, 'utf8');
+
+    expect(commitCommand).toContain('---\nname: forge:commit-craft-coach');
+    expect(commitCommand).toContain(`@${commitWorkflowPath}`);
+    expect(commitAgent).toContain('You are the Forge Commit Craft Coach.');
+    expect(commitAgent).toContain('`git log');
+    expect(commitAgent).toContain('`git diff --stat');
+    expect(commitAgent).not.toContain('forge.mjs');
+    expect(commitWorkflow).toContain('git log');
+    expect(commitWorkflow).toContain('git diff --stat');
+
+    expect(prArchCommand).toContain('---\nname: forge:pr-architect');
+    expect(prArchAgent).toContain('You are the Forge PR Architect.');
+    expect(prArchAgent).toContain('`gh pr list --json');
+    expect(prArchAgent).toContain('`gh pr view');
+    expect(prArchAgent).not.toContain('forge.mjs');
+
+    expect(reviewCommand).toContain('---\nname: forge:review-quality-coach');
+    expect(reviewAgent).toContain('You are the Forge Review Quality Coach.');
+    expect(reviewAgent).toContain('`gh api repos/{owner}/{repo}/pulls');
+    expect(reviewAgent).not.toContain('forge.mjs');
+  });
+
   it('preserves Claude command and agent customizations on reinstall', async () => {
     await assistantInstallService.installDefaultSummonables(tempRepoPath, ['claude']);
 

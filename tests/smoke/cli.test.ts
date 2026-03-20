@@ -77,7 +77,7 @@ describe('CLI Smoke Tests - Installer Lifecycle', () => {
   };
 
   describe('default installer', () => {
-    it('installs all assistant assets in the expected global locations without a bundled runtime', async () => {
+    it('installs only core plugin assets by default without elevate plugins', async () => {
       const { exitCode, stdout } = await runCLI([]);
       const copilotRoot = join(tempHomePath, '.copilot');
       const claudeRoot = join(tempHomePath, '.claude');
@@ -122,6 +122,14 @@ describe('CLI Smoke Tests - Installer Lifecycle', () => {
       expect(await fileExists(join(geminiRoot, 'commands/forge/pr-comments-analyzer.toml'))).toBe(true);
       expect(await fileExists(join(geminiRoot, 'agents/forge-pr-comments-analyzer.md'))).toBe(true);
 
+      // Coaching plugins should NOT be installed by default
+      expect(await fileExists(join(copilotRoot, 'agents/forge-commit-craft-coach.agent.md'))).toBe(false);
+      expect(await fileExists(join(copilotRoot, 'agents/forge-pr-architect.agent.md'))).toBe(false);
+      expect(await fileExists(join(copilotRoot, 'agents/forge-review-quality-coach.agent.md'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/commit-craft-coach.md'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/pr-architect.md'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/review-quality-coach.md'))).toBe(false);
+
       expect(await fileExists(join(copilotRoot, 'forge/bin/forge.mjs'))).toBe(false);
       expect(await fileExists(join(claudeRoot, 'forge/bin/forge.mjs'))).toBe(false);
       expect(await fileExists(join(codexRoot, 'forge/bin/forge.mjs'))).toBe(false);
@@ -130,6 +138,43 @@ describe('CLI Smoke Tests - Installer Lifecycle', () => {
       expect(await fileExists(join(tempRepoPath, '.codex'))).toBe(false);
       expect(await fileExists(join(tempRepoPath, '.gemini'))).toBe(false);
       expect(await fileExists(join(tempHomePath, '.config/gh'))).toBe(false);
+    }, 20000);
+
+    it('installs elevate plugins when --plugins elevate is specified', async () => {
+      const { exitCode } = await runCLI(['--plugins', 'elevate']);
+      const copilotRoot = join(tempHomePath, '.copilot');
+      const claudeRoot = join(tempHomePath, '.claude');
+
+      expect(exitCode).toBe(0);
+
+      // Coaching plugins should be installed
+      expect(await fileExists(join(copilotRoot, 'agents/forge-commit-craft-coach.agent.md'))).toBe(true);
+      expect(await fileExists(join(copilotRoot, 'skills/forge-commit-craft-coach/SKILL.md'))).toBe(true);
+      expect(await fileExists(join(copilotRoot, 'agents/forge-pr-architect.agent.md'))).toBe(true);
+      expect(await fileExists(join(copilotRoot, 'agents/forge-review-quality-coach.agent.md'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/commit-craft-coach.md'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/pr-architect.md'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/review-quality-coach.md'))).toBe(true);
+
+      // Core plugins should NOT be installed with --plugins elevate
+      expect(await fileExists(join(copilotRoot, 'agents/forge-discussion-analyzer.agent.md'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/discussion-analyzer.md'))).toBe(false);
+    }, 20000);
+
+    it('installs all plugins when --plugins all is specified', async () => {
+      const { exitCode } = await runCLI(['--plugins', 'all']);
+      const copilotRoot = join(tempHomePath, '.copilot');
+      const claudeRoot = join(tempHomePath, '.claude');
+
+      expect(exitCode).toBe(0);
+
+      // Both core and elevate plugins should be installed
+      expect(await fileExists(join(copilotRoot, 'agents/forge-discussion-analyzer.agent.md'))).toBe(true);
+      expect(await fileExists(join(copilotRoot, 'agents/forge-commit-craft-coach.agent.md'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/discussion-analyzer.md'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/commit-craft-coach.md'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/pr-architect.md'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/review-quality-coach.md'))).toBe(true);
     }, 20000);
 
     it('installs content that points each assistant at direct gh workflows', async () => {
@@ -355,6 +400,7 @@ describe('CLI Smoke Tests - Installer Lifecycle', () => {
       expect(stdout).toContain('Usage: forge');
       expect(stdout).toContain('Install or remove Forge assistant assets for Copilot, Claude, Codex, and Gemini');
       expect(stdout).toContain('--assistants <targets>');
+      expect(stdout).toContain('--plugins <group>');
       expect(stdout).toContain('--uninstall');
       expect(stdout).not.toContain('--run <analyzer>');
       expect(stdout).not.toContain('bootstrap');

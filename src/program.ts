@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { installAssistantsCommand } from "./commands/install-assistants.js";
 import { uninstallAssistantsCommand } from "./commands/uninstall-assistants.js";
 import { AssistantId } from "./contracts/assistants.js";
+import { PluginGroup, PLUGIN_GROUPS } from "./services/assistants/summonables.js";
 
 type PackageManifest = {
   name?: string;
@@ -15,6 +16,7 @@ type ProgramOptions = {
   cwd: string;
   verbose?: boolean;
   assistants?: string;
+  plugins?: string;
   uninstall?: boolean;
 };
 
@@ -39,6 +41,7 @@ export async function createProgram(): Promise<Command> {
     .option("--cwd <path>", "The working directory to run the command in.", process.cwd())
     .option("--verbose", "Show detailed installer update output.")
     .option("--assistants <targets>", "Install or remove assistant assets for: all, copilot, claude, codex, or gemini.")
+    .option("--plugins <group>", "Plugin group to install: core (default), elevate, or all.")
     .option("--uninstall", "Remove Forge assistant assets instead of installing them.")
     .hook("preAction", (thisCommand) => {
       const options = thisCommand.opts();
@@ -50,11 +53,13 @@ export async function createProgram(): Promise<Command> {
 
   program.action(async (options: ProgramOptions) => {
     const assistantSelection = parseAssistantSelection(options.assistants);
+    const pluginSelection = parsePluginSelection(options.plugins);
 
     if (options.uninstall) {
       await uninstallAssistantsCommand(options.cwd, {
         verbose: options.verbose,
         assistants: assistantSelection,
+        pluginGroups: pluginSelection,
       });
       return;
     }
@@ -62,6 +67,7 @@ export async function createProgram(): Promise<Command> {
     await installAssistantsCommand(options.cwd, {
       verbose: options.verbose,
       assistants: assistantSelection,
+      pluginGroups: pluginSelection,
       version: manifest.version ?? "0.0.0",
     });
   });
@@ -88,5 +94,23 @@ function parseAssistantSelection(value?: string): AssistantId[] | undefined {
       return ['gemini'];
     default:
       throw new Error(`Unknown assistant target "${value}". Use one of: all, copilot, claude, codex, gemini.`);
+  }
+}
+
+function parsePluginSelection(value?: string): PluginGroup[] | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  switch (normalized) {
+    case 'core':
+      return ['core'];
+    case 'elevate':
+      return ['elevate'];
+    case 'all':
+      return [...PLUGIN_GROUPS];
+    default:
+      throw new Error(`Unknown plugin group "${value}". Use one of: core, elevate, all.`);
   }
 }

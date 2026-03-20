@@ -59,6 +59,34 @@ describe('Codex assistant translation', () => {
     await expect(access(join(tempHomePath, '.codex/forge/bin/forge.mjs'))).rejects.toThrow();
   });
 
+  it('renders Codex assets for coaching plugins with domain-specific guidance', async () => {
+    const [result] = await assistantInstallService.installDefaultSummonables(tempRepoPath, ['codex']);
+    const commitSkillPath = join(tempHomePath, '.codex/skills/forge-commit-craft-coach/SKILL.md');
+    const commitAgentPath = join(tempHomePath, '.codex/agents/forge-commit-craft-coach.md');
+    const commitTomlPath = join(tempHomePath, '.codex/agents/forge-commit-craft-coach.toml');
+    const prArchSkillPath = join(tempHomePath, '.codex/skills/forge-pr-architect/SKILL.md');
+    const reviewAgentPath = join(tempHomePath, '.codex/agents/forge-review-quality-coach.md');
+
+    expect(result.status).toBe('success');
+
+    const commitSkill = await readFile(commitSkillPath, 'utf8');
+    const commitAgent = await readFile(commitAgentPath, 'utf8');
+    const commitToml = await readFile(commitTomlPath, 'utf8');
+    const prArchSkill = await readFile(prArchSkillPath, 'utf8');
+    const reviewAgent = await readFile(reviewAgentPath, 'utf8');
+
+    expect(commitSkill).toContain('`$forge-commit-craft-coach`');
+    expect(commitSkill).toContain('git log');
+    expect(commitSkill).not.toContain('forge.mjs');
+    expect(commitAgent).toContain('`git log');
+    expect(commitAgent).not.toContain('forge.mjs');
+    expect(commitToml).toContain('sandbox_mode = "workspace-write"');
+    expect(commitToml).toContain('`git log');
+
+    expect(prArchSkill).toContain('gh pr list --json');
+    expect(reviewAgent).toContain('`gh api repos/{owner}/{repo}/pulls');
+  });
+
   it('preserves Codex skill customizations on reinstall', async () => {
     await assistantInstallService.installDefaultSummonables(tempRepoPath, ['codex']);
     const skillPath = join(tempHomePath, '.codex/skills/forge-discussion-analyzer/SKILL.md');
@@ -259,6 +287,32 @@ describe('Gemini assistant translation', () => {
     expect(prCommand).toContain('gh pr view');
 
     await expect(access(join(tempHomePath, '.gemini/forge/bin/forge.mjs'))).rejects.toThrow();
+  });
+
+  it('renders Gemini assets for coaching plugins with domain-specific guidance', async () => {
+    const [result] = await assistantInstallService.installDefaultSummonables(tempRepoPath, ['gemini']);
+    const commitCommandPath = join(tempHomePath, '.gemini/commands/forge/commit-craft-coach.toml');
+    const commitAgentPath = join(tempHomePath, '.gemini/agents/forge-commit-craft-coach.md');
+    const prArchCommandPath = join(tempHomePath, '.gemini/commands/forge/pr-architect.toml');
+    const reviewCommandPath = join(tempHomePath, '.gemini/commands/forge/review-quality-coach.toml');
+    const reviewAgentPath = join(tempHomePath, '.gemini/agents/forge-review-quality-coach.md');
+
+    expect(result.status).toBe('success');
+
+    const commitCommand = await readFile(commitCommandPath, 'utf8');
+    const commitAgent = await readFile(commitAgentPath, 'utf8');
+    const prArchCommand = await readFile(prArchCommandPath, 'utf8');
+    const reviewCommand = await readFile(reviewCommandPath, 'utf8');
+    const reviewAgent = await readFile(reviewAgentPath, 'utf8');
+
+    expect(commitCommand).toContain('git log');
+    expect(commitCommand).not.toContain('forge.mjs');
+    expect(commitAgent).toContain('tools:\n  - read_file\n  - run_shell_command');
+    expect(commitAgent).toContain('`git log');
+
+    expect(prArchCommand).toContain('gh pr list --json');
+    expect(reviewCommand).toContain('gh api');
+    expect(reviewAgent).toContain('`gh api repos/{owner}/{repo}/pulls');
   });
 
   it('preserves Gemini agent customizations on reinstall', async () => {

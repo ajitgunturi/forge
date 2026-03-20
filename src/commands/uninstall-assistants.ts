@@ -2,6 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { assistantInstallService } from '../services/assistants/install.js';
 import { AssistantId, AssistantOperationResult } from '../contracts/assistants.js';
+import { PluginGroup } from '../services/assistants/summonables.js';
 
 const DEFAULT_ASSISTANTS: AssistantId[] = ['copilot', 'claude', 'codex', 'gemini'];
 
@@ -10,12 +11,12 @@ const DEFAULT_ASSISTANTS: AssistantId[] = ['copilot', 'claude', 'codex', 'gemini
  */
 export async function uninstallAssistantsCommand(
   cwd: string,
-  options: { verbose?: boolean; assistants?: AssistantId[] } = {},
+  options: { verbose?: boolean; assistants?: AssistantId[]; pluginGroups?: PluginGroup[] } = {},
 ): Promise<void> {
   const requestedAssistants = options.assistants ?? DEFAULT_ASSISTANTS;
   printUninstallTargets(requestedAssistants, cwd);
 
-  const results = await assistantInstallService.uninstallDefaultSummonables(cwd, requestedAssistants);
+  const results = await assistantInstallService.uninstallDefaultSummonables(cwd, requestedAssistants, options.pluginGroups);
 
   let removedAnyAssets = false;
   let hadFailure = false;

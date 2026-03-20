@@ -2,7 +2,7 @@ import { ForgePlugin } from '../../contracts/forge-plugin.js';
 import { FORGE_MANAGED_END, FORGE_MANAGED_START, FORGE_USER_END, FORGE_USER_START } from './copilot.js';
 import { getExposedPluginName, getPluginRoute } from './exposure.js';
 
-type AnalyzerDomain = 'discussions' | 'issues' | 'pr-reviews';
+type AnalyzerDomain = 'discussions' | 'issues' | 'pr-reviews' | 'commit-craft' | 'pr-architecture' | 'review-quality';
 
 interface AnalyzerPromptContext {
   analyzerDescription: string;
@@ -21,12 +21,12 @@ interface AnalyzerExecutionGuidance {
 }
 
 function getAnalyzerDomain(entry: ForgePlugin): AnalyzerDomain {
-  if (entry.metadata && typeof entry.metadata === 'object' && entry.metadata.analyzerDomain === 'issues') {
-    return 'issues';
-  }
-  if (entry.metadata && typeof entry.metadata === 'object' && entry.metadata.analyzerDomain === 'pr-reviews') {
-    return 'pr-reviews';
-  }
+  const domain = entry.metadata && typeof entry.metadata === 'object' ? entry.metadata.analyzerDomain : undefined;
+  if (domain === 'issues') return 'issues';
+  if (domain === 'pr-reviews') return 'pr-reviews';
+  if (domain === 'commit-craft') return 'commit-craft';
+  if (domain === 'pr-architecture') return 'pr-architecture';
+  if (domain === 'review-quality') return 'review-quality';
   return 'discussions';
 }
 
@@ -53,6 +53,42 @@ function getAnalyzerPromptContext(entry: ForgePlugin): AnalyzerPromptContext {
       subjectSingularLower: 'pull request review',
       counterpartPlural: 'GitHub Issues and Discussions',
       narrowingHint: 'PR number, reviewer username, relative windows, or explicit after/before dates',
+    };
+  }
+
+  if (domain === 'commit-craft') {
+    return {
+      analyzerDescription: 'Analyze commit history patterns and coach developers toward atomic, well-narrated commits.',
+      workflowTitle: 'Commit Craft Coach Workflow',
+      roleName: 'Forge Commit Craft Coach',
+      subjectPlural: 'Git commit history and patterns',
+      subjectSingularLower: 'commit',
+      counterpartPlural: 'GitHub Pull Requests, Issues, and Discussions',
+      narrowingHint: 'author, date range, branch, or path',
+    };
+  }
+
+  if (domain === 'pr-architecture') {
+    return {
+      analyzerDescription: 'Analyze PR structure and coach developers toward PRs that reviewers can confidently approve.',
+      workflowTitle: 'PR Architect Workflow',
+      roleName: 'Forge PR Architect',
+      subjectPlural: 'GitHub Pull Request structure and patterns',
+      subjectSingularLower: 'pull request',
+      counterpartPlural: 'GitHub Issues and Discussions',
+      narrowingHint: 'author, state, date range, or label',
+    };
+  }
+
+  if (domain === 'review-quality') {
+    return {
+      analyzerDescription: 'Analyze outgoing code reviews and coach developers toward reviews that are specific, actionable, and architecturally deep.',
+      workflowTitle: 'Review Quality Coach Workflow',
+      roleName: 'Forge Review Quality Coach',
+      subjectPlural: 'GitHub code review quality and patterns',
+      subjectSingularLower: 'code review',
+      counterpartPlural: 'GitHub Issues and Discussions',
+      narrowingHint: 'reviewer username, date range, or PR author',
     };
   }
 
@@ -99,6 +135,74 @@ function getAnalyzerExecutionGuidance(entry: ForgePlugin): AnalyzerExecutionGuid
         '- Use read-only `gh api repos/{owner}/{repo}/pulls/<pr>/comments` only when you need inline review comments that `gh pr view --json` did not expose.',
       ],
       geminiPromptLine: 'Primary data path: read-only `gh pr view` / `gh pr list --json`, with current-branch PR detection when no PR number is provided.',
+    };
+  }
+
+  if (domain === 'commit-craft') {
+    return {
+      agentInstructions: [
+        'Use read-only `git log --format=...` to fetch commit history (messages, sizes, timestamps, authors).',
+        'Use `git diff --stat <sha1>..<sha2>` to measure commit scope (files touched, lines changed).',
+        'Use `git log --oneline --graph` to detect merge/rebase patterns.',
+        'Detect vague messages ("fix", "update", "wip") and coach toward Conventional Commits or the repo\'s detected convention.',
+        'Flag commits touching 10+ files or 500+ lines and coach toward atomic decomposition.',
+        'Identify end-of-day commit dumps vs. steady commit rhythm and coach on frequency.',
+        'Auto-detect if the repo uses Conventional Commits, scope prefixes, or ticket references — coach toward the repo\'s own standard.',
+      ],
+      workflowRules: [
+        '- Primary data path: read-only `git log` and `git diff --stat` commands.',
+        '- Detect the repo\'s commit convention before coaching (Conventional Commits, ticket prefixes, etc.).',
+        '- Score commit messages on clarity, atomicity, and convention adherence.',
+        '- Flag commits bundling unrelated changes (e.g., feature + formatting in one commit).',
+        '- Ground coaching in concrete examples from the fetched commit history.',
+      ],
+      geminiPromptLine: 'Primary data path: read-only `git log` and `git diff --stat` commands run from the current repository.',
+    };
+  }
+
+  if (domain === 'pr-architecture') {
+    return {
+      agentInstructions: [
+        'Use read-only `gh pr list --json number,title,additions,deletions,changedFiles,createdAt,mergedAt,reviewDecision` for PR metrics.',
+        'Use `gh pr view <n> --json title,body,additions,deletions,changedFiles,files,reviews,comments,reviewRequests,commits` for deep PR analysis.',
+        'Use `gh api repos/{owner}/{repo}/pulls/<n>/reviews` for review turnaround data.',
+        'When no PR number is provided, detect the current pull request from the checked-out branch with `gh pr view`.',
+        'Flag PRs over 400 lines changed and coach toward the 100-200 line sweet spot with review speed correlation data.',
+        'Check PR descriptions for summary, test plan, and context — coach on what reviewers need.',
+        'Detect PRs touching too many unrelated directories and coach on scoping.',
+        'Benchmark the user\'s PR habits against the repo\'s average PR size and file spread.',
+      ],
+      workflowRules: [
+        '- Primary data path: `gh pr list --json` and `gh pr view --json`.',
+        '- When the request omits a PR number, resolve the current branch PR before analyzing.',
+        '- Use read-only `gh api repos/{owner}/{repo}/pulls/<n>/reviews` for review turnaround metrics.',
+        '- Coach on PR size, description quality, file spread, and review turnaround with data-driven benchmarks.',
+        '- When a PR is too large, coach on how to split into a stack of dependent PRs.',
+      ],
+      geminiPromptLine: 'Primary data path: read-only `gh pr list --json` / `gh pr view --json`, with current-branch PR detection when no PR number is provided.',
+    };
+  }
+
+  if (domain === 'review-quality') {
+    return {
+      agentInstructions: [
+        'Use read-only `gh api repos/{owner}/{repo}/pulls?state=all&per_page=100` to list PRs for review analysis.',
+        'Use `gh api repos/{owner}/{repo}/pulls/<n>/comments` to fetch review comments on PRs.',
+        'Use `gh api repos/{owner}/{repo}/pulls/<n>/reviews` to fetch review verdicts.',
+        'Auto-detect the reviewer username from `gh api user` when not explicitly provided.',
+        'Classify comments as surface-level (typos, formatting), logic (edge cases, correctness), or architectural (design, abstractions) — coach toward depth.',
+        'Score comment actionability: vague ("this looks wrong") vs. actionable ("this will NPE when user is null — add a guard at line 42").',
+        'Detect repeated review themes and suggest proposing team-wide guidelines instead of per-PR feedback.',
+        'Surface review latency and coach on unblocking teammates promptly.',
+      ],
+      workflowRules: [
+        '- Primary data path: read-only `gh api` calls against the current repository\'s pulls endpoint.',
+        '- Filter review comments by the target reviewer username (auto-detected or provided).',
+        '- Classify each comment on depth (surface/logic/architectural) and actionability.',
+        '- Coach toward the "what + why + suggestion" pattern for constructive reviews.',
+        '- Surface review coverage gaps and latency patterns across the repo.',
+      ],
+      geminiPromptLine: 'Primary data path: read-only `gh api` calls that fetch PR review comments and verdicts from the current repository.',
     };
   }
 
