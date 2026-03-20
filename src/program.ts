@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { installAssistantsCommand } from "./commands/install-assistants.js";
+import { uninstallAssistantsCommand } from "./commands/uninstall-assistants.js";
 import { AssistantId } from "./contracts/assistants.js";
 
 type PackageManifest = {
@@ -14,6 +15,7 @@ type ProgramOptions = {
   cwd: string;
   verbose?: boolean;
   assistants?: string;
+  uninstall?: boolean;
 };
 
 const EXECUTABLE_NAME = "forge";
@@ -32,11 +34,12 @@ export async function createProgram(): Promise<Command> {
 
   program
     .name(EXECUTABLE_NAME)
-    .description("Install Forge assistant assets for Copilot, Claude, Codex, and Gemini.")
+    .description("Install or remove Forge assistant assets for Copilot, Claude, Codex, and Gemini.")
     .version(manifest.version ?? "0.0.0", "-v, --version", "output the current version")
     .option("--cwd <path>", "The working directory to run the command in.", process.cwd())
     .option("--verbose", "Show detailed installer update output.")
-    .option("--assistants <targets>", "Install assistant assets for: all, copilot, claude, codex, or gemini.")
+    .option("--assistants <targets>", "Install or remove assistant assets for: all, copilot, claude, codex, or gemini.")
+    .option("--uninstall", "Remove Forge assistant assets instead of installing them.")
     .hook("preAction", (thisCommand) => {
       const options = thisCommand.opts();
       if (options.cwd && options.cwd !== process.cwd()) {
@@ -46,9 +49,19 @@ export async function createProgram(): Promise<Command> {
     .showHelpAfterError("(run with --help for usage)");
 
   program.action(async (options: ProgramOptions) => {
+    const assistantSelection = parseAssistantSelection(options.assistants);
+
+    if (options.uninstall) {
+      await uninstallAssistantsCommand(options.cwd, {
+        verbose: options.verbose,
+        assistants: assistantSelection,
+      });
+      return;
+    }
+
     await installAssistantsCommand(options.cwd, {
       verbose: options.verbose,
-      assistants: parseAssistantSelection(options.assistants),
+      assistants: assistantSelection,
       version: manifest.version ?? "0.0.0",
     });
   });

@@ -2,7 +2,7 @@
 
 Forge installs assistant-native assets under `~/.copilot`, `~/.claude`, `~/.codex`, and `~/.gemini`.
 
-The `forge` CLI is now installer-only. After installation, the assistant files tell Copilot, Claude, Codex, and Gemini to use read-only `gh` commands directly:
+The `forge` CLI installs and removes assistant-native assets. After installation, the assistant files tell Copilot, Claude, Codex, and Gemini to use read-only `gh` commands directly:
 
 - Discussions: `gh api graphql`
 - Issues: `gh issue list` / `gh issue view`
@@ -24,6 +24,16 @@ npx forge-ai-assist@latest --assistants claude
 npx forge-ai-assist@latest --assistants codex
 npx forge-ai-assist@latest --assistants gemini
 ```
+
+## Uninstall
+
+```bash
+npx forge-ai-assist@latest --uninstall
+npx forge-ai-assist@latest --uninstall --assistants claude
+```
+
+Uninstall removes the Forge-managed assistant assets for the selected targets and prunes empty Forge-owned directories when possible.
+It also cleans up legacy bundled runtime leftovers from older releases, while leaving unrelated assistant files and `~/.config/gh` alone.
 
 If npm keeps serving a stale cached release, force an online refresh:
 

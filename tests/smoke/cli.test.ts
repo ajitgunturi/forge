@@ -6,7 +6,7 @@ import { tmpdir } from 'os';
 
 const CLI_PATH = join(process.cwd(), 'dist/cli.js');
 
-describe('CLI Smoke Tests - Installer Flow', () => {
+describe('CLI Smoke Tests - Installer Lifecycle', () => {
   let tempRepoPath: string;
   let tempHomePath: string;
 
@@ -292,13 +292,70 @@ describe('CLI Smoke Tests - Installer Flow', () => {
     }, 20000);
   });
 
+  describe('uninstall flow', () => {
+    it('removes installed Forge assets and legacy runtime leftovers without touching unrelated assistant files', async () => {
+      const claudeRoot = join(tempHomePath, '.claude');
+
+      await runCLI([]);
+      await createLegacyRuntime(claudeRoot);
+      await writeFile(join(claudeRoot, 'notes.md'), 'keep me', 'utf8');
+
+      const { exitCode, stdout } = await runCLI(['--uninstall']);
+
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain(`Removing Forge Copilot assets from ${join(tempHomePath, '.copilot')}`);
+      expect(stdout).toContain(`Removing Forge Claude assets from ${claudeRoot}`);
+      expect(stdout).toContain('✅ copilot');
+      expect(stdout).toContain('✅ claude');
+      expect(stdout).toContain('✅ codex');
+      expect(stdout).toContain('✅ gemini');
+
+      expect(await fileExists(join(tempHomePath, '.copilot/agents/forge-discussion-analyzer.agent.md'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.copilot/skills/forge-discussion-analyzer/SKILL.md'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.claude/commands/forge/discussion-analyzer.md'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.claude/agents/forge-discussion-analyzer.md'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.claude/forge/workflows/discussion-analyzer.md'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.codex/skills/forge-discussion-analyzer/SKILL.md'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.codex/agents/forge-discussion-analyzer.toml'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.gemini/commands/forge/discussion-analyzer.toml'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.gemini/agents/forge-discussion-analyzer.md'))).toBe(false);
+
+      expect(await fileExists(join(tempHomePath, '.claude/forge/bin/forge.mjs'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.claude/forge'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'notes.md'))).toBe(true);
+    }, 20000);
+
+    it('uninstalls only the requested assistant assets when --assistants is provided', async () => {
+      const claudeRoot = join(tempHomePath, '.claude');
+
+      await runCLI([]);
+      await writeFile(join(claudeRoot, 'notes.md'), 'keep me', 'utf8');
+
+      const { exitCode, stdout } = await runCLI(['--uninstall', '--assistants', 'claude']);
+
+      expect(exitCode).toBe(0);
+      expect(stdout).toContain(`Removing Forge Claude assets from ${claudeRoot}`);
+      expect(stdout).toContain('✅ claude');
+
+      expect(await fileExists(join(tempHomePath, '.claude/commands/forge/discussion-analyzer.md'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.claude/agents/forge-discussion-analyzer.md'))).toBe(false);
+      expect(await fileExists(join(tempHomePath, '.claude/forge/workflows/discussion-analyzer.md'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'notes.md'))).toBe(true);
+
+      expect(await fileExists(join(tempHomePath, '.copilot/agents/forge-discussion-analyzer.agent.md'))).toBe(true);
+      expect(await fileExists(join(tempHomePath, '.codex/skills/forge-discussion-analyzer/SKILL.md'))).toBe(true);
+      expect(await fileExists(join(tempHomePath, '.gemini/commands/forge/discussion-analyzer.toml'))).toBe(true);
+    }, 20000);
+  });
+
   describe('help surface', () => {
-    it('presents forge as an install-only CLI', async () => {
+    it('presents forge as an install and uninstall CLI', async () => {
       const { stdout } = await runCLI(['--help']);
 
       expect(stdout).toContain('Usage: forge');
-      expect(stdout).toContain('Install Forge assistant assets for Copilot, Claude, Codex, and Gemini');
+      expect(stdout).toContain('Install or remove Forge assistant assets for Copilot, Claude, Codex, and Gemini');
       expect(stdout).toContain('--assistants <targets>');
+      expect(stdout).toContain('--uninstall');
       expect(stdout).not.toContain('--run <analyzer>');
       expect(stdout).not.toContain('bootstrap');
       expect(stdout).not.toContain('forge analyze');
@@ -351,7 +408,7 @@ describe('CLI Smoke Tests - Installer Flow', () => {
 
         expect(exitCode).toBe(0);
         expect(stdout).toContain('Usage: forge');
-        expect(stdout).toContain('Install Forge assistant assets for Copilot, Claude, Codex, and Gemini');
+        expect(stdout).toContain('Install or remove Forge assistant assets for Copilot, Claude, Codex, and Gemini');
 
         const installRun = await execa(forgeBin, [], {
           cwd: installPath,

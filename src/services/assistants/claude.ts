@@ -107,13 +107,18 @@ export class ClaudeAdapter implements AssistantAdapter {
   getObsoleteAssetPaths(cwd: string, entry: ForgePlugin): string[] {
     const layout = this.resolveInstallLayout(cwd);
     const namespacedAgentPath = path.join(layout.agentsPath, `${getExposedPluginName('claude', 'command', entry)}.md`);
-    const namespacedSkillDir = path.join(layout.rootPath, 'skills', getExposedPluginName('claude', 'command', entry));
-    const legacySkillDir = path.join(layout.rootPath, 'skills', entry.id);
+    const namespacedSkillPath = path.join(
+      layout.rootPath,
+      'skills',
+      getExposedPluginName('claude', 'command', entry),
+      'SKILL.md',
+    );
+    const legacySkillPath = path.join(layout.rootPath, 'skills', entry.id, 'SKILL.md');
 
     return [
       namespacedAgentPath,
-      namespacedSkillDir,
-      legacySkillDir,
+      namespacedSkillPath,
+      legacySkillPath,
     ].filter((assetPath): assetPath is string => Boolean(assetPath));
   }
 }

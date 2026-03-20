@@ -133,11 +133,12 @@ When writing an asset:
 
 **File:** `src/program.ts`
 
-The public `forge` command is installer-only:
+The public `forge` command manages install and uninstall flows:
 
 - `--assistants <targets>`
 - `--verbose`
 - `--cwd <path>`
+- `--uninstall`
 
 There is no analyzer execution subcommand anymore.
 
@@ -149,6 +150,7 @@ When changing the install architecture:
 npm run build
 npm test
 node dist/cli.js --assistants codex
+node dist/cli.js --uninstall --assistants codex
 ```
 
 Check that:
@@ -156,4 +158,5 @@ Check that:
 - assets mention direct `gh` usage
 - no asset references `forge.mjs` or `--run`
 - legacy bundled runtime files are removed on reinstall
+- uninstall removes Forge-managed assets without touching unrelated assistant files
 - user customization blocks stay intact

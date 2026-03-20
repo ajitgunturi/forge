@@ -48,6 +48,10 @@ export class AssistantInstallService {
     return this.installEntriesSelected(cwd, forgePlugins, assistantIds);
   }
 
+  async uninstallDefaultSummonables(cwd: string, assistantIds: AssistantId[]): Promise<AssistantOperationResult[]> {
+    return this.uninstallEntriesSelected(cwd, forgePlugins, assistantIds);
+  }
+
   async installEntriesSelected(
     cwd: string,
     entries: ForgePlugin[],
@@ -74,6 +78,39 @@ export class AssistantInstallService {
           id: adapter.id,
           status: 'failed',
           message: `Error installing/updating ${adapter.name}: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
+
+    return results;
+  }
+
+  async uninstallEntriesSelected(
+    cwd: string,
+    entries: ForgePlugin[],
+    assistantIds: AssistantId[],
+  ): Promise<AssistantOperationResult[]> {
+    const results: AssistantOperationResult[] = [];
+
+    for (const assistantId of assistantIds) {
+      const adapter = assistantRegistry.get(assistantId);
+      if (!adapter) {
+        results.push({
+          id: assistantId,
+          status: 'failed',
+          message: `Adapter for assistant '${assistantId}' not found in registry.`,
+        });
+        continue;
+      }
+
+      try {
+        const result = await this.uninstallMany(cwd, entries, adapter);
+        results.push(result);
+      } catch (error) {
+        results.push({
+          id: adapter.id,
+          status: 'failed',
+          message: `Error removing ${adapter.name}: ${error instanceof Error ? error.message : String(error)}`,
         });
       }
     }
@@ -146,6 +183,67 @@ export class AssistantInstallService {
     };
   }
 
+  async uninstallMany(
+    cwd: string,
+    entries: ForgePlugin[],
+    adapter: AssistantAdapter,
+  ): Promise<AssistantOperationResult> {
+    const layout = adapter.resolveInstallLayout(cwd);
+    const details: string[] = [];
+    let removedCount = 0;
+
+    for (const entry of entries) {
+      const managedAssetPaths = this.getManagedAssetPaths(cwd, entry, adapter);
+
+      for (const managedAssetPath of managedAssetPaths) {
+        const removed = await removePathIfExists(managedAssetPath);
+        if (!removed) {
+          continue;
+        }
+
+        removedCount += 1;
+        details.push(`removed ${managedAssetPath}`);
+        await pruneEmptyParents(path.dirname(managedAssetPath), resolvePruneBoundary(managedAssetPath, layout.rootPath, cwd));
+      }
+    }
+
+    const legacyDetails = await this.removeLegacyRuntimeArtifacts(layout);
+    removedCount += legacyDetails.length;
+    details.push(...legacyDetails);
+
+    for (const legacyAgentId of LEGACY_COPILOT_AGENT_IDS) {
+      const legacyAgentPath = path.join(layout.agentsPath, `${legacyAgentId}.agent.md`);
+      const removed = await removePathIfExists(legacyAgentPath);
+      if (!removed) {
+        continue;
+      }
+
+      removedCount += 1;
+      details.push(`removed obsolete agent ${legacyAgentPath}`);
+      await pruneEmptyParents(path.dirname(legacyAgentPath), layout.rootPath);
+    }
+
+    const obsoleteDirectories = adapter.getObsoleteDirectoryPaths?.(cwd) ?? [];
+    for (const directoryPath of obsoleteDirectories) {
+      await removeDirectoryIfEmpty(directoryPath);
+    }
+
+    if (removedCount === 0) {
+      return {
+        id: adapter.id,
+        status: 'skipped',
+        message: `No Forge ${adapter.name} assets were found under ${layout.rootPath}.`,
+      };
+    }
+
+    return {
+      id: adapter.id,
+      status: 'success',
+      message: `Removed Forge ${adapter.name} assets from ${layout.rootPath} (${removedCount} deleted).`,
+      details,
+    };
+  }
+
   async installOne(cwd: string, entry: ForgePlugin, adapter: AssistantAdapter): Promise<AssistantOperationResult> {
     const availability = await adapter.checkAvailability();
     
@@ -170,13 +268,20 @@ export class AssistantInstallService {
     const targetPath = primaryAsset.targetPath;
 
     try {
+      const layout = adapter.resolveInstallLayout(cwd);
       const writeResults = [];
       for (const asset of [primaryAsset, ...supplementalAssets]) {
         writeResults.push(await this.writeManagedAsset(adapter, asset, migrationSources[asset.targetPath] ?? []));
       }
 
       for (const obsoleteAssetPath of obsoleteAssetPaths) {
-        await fs.rm(obsoleteAssetPath, { recursive: true, force: true });
+        const removed = await removePathIfExists(obsoleteAssetPath);
+        if (removed) {
+          await pruneEmptyParents(
+            path.dirname(obsoleteAssetPath),
+            resolvePruneBoundary(obsoleteAssetPath, layout.rootPath, cwd),
+          );
+        }
       }
 
       if (writeResults.every((result) => result.status === 'skipped')) {
@@ -207,6 +312,14 @@ export class AssistantInstallService {
         message: `Failed to write ${adapter.name} entry to ${targetPath}: ${error instanceof Error ? error.message : String(error)}`,
       };
     }
+  }
+
+  private getManagedAssetPaths(cwd: string, entry: ForgePlugin, adapter: AssistantAdapter): string[] {
+    const primaryAssetPath = adapter.getInstallTarget(cwd, entry);
+    const supplementalAssetPaths = (adapter.getSupplementalAssets?.(cwd, entry) ?? []).map((asset) => asset.targetPath);
+    const obsoleteAssetPaths = adapter.getObsoleteAssetPaths?.(cwd, entry) ?? [];
+
+    return Array.from(new Set([primaryAssetPath, ...supplementalAssetPaths, ...obsoleteAssetPaths]));
   }
 
   private mergeManagedContent(_adapter: AssistantAdapter, renderedContent: string, existingContent: string | null): string {
@@ -454,6 +567,52 @@ async function removeDirectoryIfEmpty(directoryPath: string): Promise<void> {
     }
     throw error;
   }
+}
+
+async function removePathIfExists(targetPath: string): Promise<boolean> {
+  try {
+    await fs.access(targetPath);
+  } catch {
+    return false;
+  }
+
+  await fs.rm(targetPath, { recursive: true, force: true });
+  return true;
+}
+
+async function pruneEmptyParents(startDirectoryPath: string, stopBeforePath: string): Promise<void> {
+  const normalizedStopBeforePath = path.resolve(stopBeforePath);
+  let currentDirectoryPath = path.resolve(startDirectoryPath);
+
+  while (currentDirectoryPath !== normalizedStopBeforePath) {
+    await removeDirectoryIfEmpty(currentDirectoryPath);
+    const parentDirectoryPath = path.dirname(currentDirectoryPath);
+
+    if (parentDirectoryPath === currentDirectoryPath) {
+      return;
+    }
+
+    currentDirectoryPath = parentDirectoryPath;
+  }
+}
+
+function resolvePruneBoundary(targetPath: string, assistantRootPath: string, cwd: string): string {
+  const normalizedTargetPath = path.resolve(targetPath);
+  const normalizedAssistantRootPath = path.resolve(assistantRootPath);
+  const normalizedCwd = path.resolve(cwd);
+
+  if (
+    normalizedTargetPath === normalizedAssistantRootPath
+    || normalizedTargetPath.startsWith(`${normalizedAssistantRootPath}${path.sep}`)
+  ) {
+    return normalizedAssistantRootPath;
+  }
+
+  if (normalizedTargetPath === normalizedCwd || normalizedTargetPath.startsWith(`${normalizedCwd}${path.sep}`)) {
+    return normalizedCwd;
+  }
+
+  return path.dirname(normalizedTargetPath);
 }
 
 export const assistantInstallService = new AssistantInstallService();
