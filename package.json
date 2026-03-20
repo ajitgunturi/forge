@@ -1,6 +1,6 @@
 {
   "name": "forge-ai-assist",
-  "version": "1.1.20",
+  "version": "1.1.24",
   "description": "Install Forge assistant assets for read-only GitHub discussion, issue, and PR review analysis.",
   "keywords": [
     "copilot",
