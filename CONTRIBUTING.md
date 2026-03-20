@@ -48,25 +48,32 @@ docs/
 
 See [docs/adding-skill-agent-template.md](docs/adding-skill-agent-template.md) for the required checklist and [docs/plugin-architecture.md](docs/plugin-architecture.md) for the architecture reference.
 
-## Release
+## Commit Messages & Versioning
 
-Dry-run (version bump + build + test, no publish):
+Forge uses [Conventional Commits](https://www.conventionalcommits.org/) to **automatically determine releases**. Your commit message type controls what happens when your PR merges to `main`:
 
-```bash
-make release-check v1.2.0
+| Type | Effect | Example |
+|---|---|---|
+| `fix:` | Patch release | `fix: handle empty plugin list` |
+| `feat:` | Minor release | `feat: add Gemini adapter` |
+| `feat!:` or `BREAKING CHANGE:` footer | **Major release** | `feat!: drop Node 18 support` |
+| `chore:`, `docs:`, `ci:`, `test:` | No release | `docs: update README` |
+
+**You never set a version number.** The CI pipeline reads your commits and publishes automatically.
+
+For a major (breaking) release, either use `!` after the type or add a `BREAKING CHANGE:` footer:
+
+```text
+feat!: redesign plugin installation API
+
+BREAKING CHANGE: The install() method now requires an options object.
 ```
 
-Full release (npm publish + GitHub Release):
+See [docs/releasing.md](docs/releasing.md) for full details including the manual escape hatch.
 
-```bash
-make release v1.2.0
-```
+## Branch Protection
 
-Push just the tag and GitHub Release (if version was already bumped):
-
-```bash
-make release-tag v1.2.0
-```
+All changes to `main` must go through a pull request with passing CI. Direct pushes are blocked for all contributors.
 
 ## Runtime Notes
 
