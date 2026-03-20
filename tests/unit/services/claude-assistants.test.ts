@@ -216,4 +216,29 @@ describe('Claude assistant translation', () => {
     await expect(access(join(forgeRoot, 'forge-file-manifest.json'))).rejects.toThrow();
     await expect(access(join(forgeRoot, 'workflows/discussion-analyzer.md'))).resolves.toBeUndefined();
   });
+
+  it('renders Claude assets for the release notes generator (ops group) with domain-specific guidance', async () => {
+    const [result] = await assistantInstallService.installDefaultSummonables(tempRepoPath, ['claude'], ['ops']);
+    const commandPath = join(tempHomePath, '.claude/commands/forge/release-notes-generator.md');
+    const agentPath = join(tempHomePath, '.claude/agents/forge-release-notes-generator.md');
+    const workflowPath = join(tempHomePath, '.claude/forge/workflows/release-notes-generator.md');
+
+    expect(result.status).toBe('success');
+
+    const command = await readFile(commandPath, 'utf8');
+    const agent = await readFile(agentPath, 'utf8');
+    const workflow = await readFile(workflowPath, 'utf8');
+
+    expect(command).toContain('---\nname: forge:release-notes-generator');
+    expect(command).toContain('Generate structured release notes');
+    expect(command).toContain(`@${workflowPath}`);
+    expect(agent).toContain('You are the Forge Release Notes Generator.');
+    expect(agent).toContain('`git log --oneline');
+    expect(agent).toContain('`gh pr list --state merged');
+    expect(agent).toContain('`gh release list');
+    expect(agent).not.toContain('forge.mjs');
+    expect(workflow).toContain('Release Notes Generator Workflow');
+    expect(workflow).toContain('git log');
+    expect(workflow).toContain('gh release list');
+  });
 });

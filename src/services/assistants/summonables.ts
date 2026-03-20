@@ -1,8 +1,8 @@
 import { ForgePlugin } from '../../contracts/forge-plugin.js';
 
-export type PluginGroup = 'core' | 'elevate';
+export type PluginGroup = 'core' | 'elevate' | 'ops';
 
-export const PLUGIN_GROUPS: readonly PluginGroup[] = ['core', 'elevate'] as const;
+export const PLUGIN_GROUPS: readonly PluginGroup[] = ['core', 'elevate', 'ops'] as const;
 
 export const forgeDiscussionAnalyzerEntry: ForgePlugin = {
   id: 'forge-discussion-analyzer',
@@ -324,9 +324,72 @@ export const forgeElevatePlugins: ForgePlugin[] = [
   forgeReviewQualityCoachEntry,
 ];
 
+export const forgeReleaseNotesGeneratorEntry: ForgePlugin = {
+  id: 'forge-release-notes-generator',
+  displayName: 'Forge Release Notes Generator',
+  purpose: 'Generate structured release notes by synthesizing commits, PRs, and issues between two refs or dates.',
+  instructions: [
+    'Use this agent to generate release notes from commits, merged PRs, and closed issues between two refs or dates.',
+    'If the user asks about GitHub Discussions, Issues analysis, or PR reviews, explain that this generator only covers release note synthesis and stop.',
+    'Use read-only `git log`, `gh api`, `gh pr list`, `gh issue list`, and `gh release list` commands as the primary data path.',
+    'Auto-detect the repo\'s existing release note format from prior releases before generating new notes.',
+    'Allow all tool executions (Bash, Read, python3, node, `git`, and `gh` CLI) needed to fetch and present the analysis without repeated approval prompts. Approve the full analysis pipeline up front.',
+    'This generator is strictly read-only. Never create releases, tags, commits, or mutate any Git or GitHub resource.',
+    'Do not install `gh` extensions, edit `~/.config/gh`, or run authentication setup flows on the user\'s behalf.',
+    'Run the read-only Git and GitHub CLI flows directly instead of delegating to unrelated skills or helpers.',
+    'Group commits by type (feat/fix/chore) and link them to PRs and issues when possible.',
+    'Extract breaking changes from PR descriptions and highlight them in a dedicated section.',
+    'Output format should be markdown by default, suitable for pasting into `gh release create --notes`.',
+  ].map((line) => `- ${line}`).join('\n'),
+  capabilities: [
+    {
+      name: 'Commit Synthesis',
+      description: 'Groups commits by type and links them to PRs and issues.',
+      benefits: ['Group commits by type (feat/fix/chore)', 'Link commits to PRs and issues'],
+    },
+    {
+      name: 'PR-Based Categorization',
+      description: 'Organizes changes by PR labels and extracts breaking changes.',
+      benefits: ['Organize changes by PR labels', 'Extract breaking changes from PR descriptions'],
+    },
+    {
+      name: 'Convention Detection',
+      description: 'Auto-detects existing release note format from prior releases.',
+      benefits: ['Auto-detect existing release note format from prior releases', 'Match repo-specific section headings and groupings'],
+    },
+  ],
+  commands: [
+    {
+      name: '/agent forge-release-notes-generator',
+      description: 'Generate release notes between two refs or dates.',
+      usage: 'git log --oneline <from>..<to>',
+      examples: [
+        '/agent -> select forge-release-notes-generator -> "generate release notes from v1.0.0 to HEAD"',
+        'git log --oneline v1.0.0..HEAD',
+        'gh pr list --state merged --json title,number,labels,body --search "merged:>YYYY-MM-DD"',
+      ],
+    },
+  ],
+  principles: [
+    'Keep the assistant-facing asset compact and use git/gh as the operational data path.',
+    'Ground analysis in freshly fetched git and GitHub data, not guessed repository state.',
+    'Allow all read-only tool executions in the analysis pipeline without repeated approval prompts.',
+    'Auto-detect the repo\'s existing release note conventions before generating new notes.',
+    'Prefer the matching Forge agent or skill over unrelated skill delegation.',
+  ],
+  metadata: {
+    analyzerDomain: 'release-notes',
+  },
+};
+
+export const forgeOpsPlugins: ForgePlugin[] = [
+  forgeReleaseNotesGeneratorEntry,
+];
+
 export const forgePlugins: ForgePlugin[] = [
   ...forgeCorePlugins,
   ...forgeElevatePlugins,
+  ...forgeOpsPlugins,
 ];
 
 export function resolvePluginGroups(groups: PluginGroup[]): ForgePlugin[] {
@@ -337,5 +400,22 @@ export function resolvePluginGroups(groups: PluginGroup[]): ForgePlugin[] {
   if (groups.includes('elevate')) {
     plugins.push(...forgeElevatePlugins);
   }
+  if (groups.includes('ops')) {
+    plugins.push(...forgeOpsPlugins);
+  }
   return plugins;
+}
+
+export interface PluginGroupInfo {
+  id: PluginGroup;
+  label: string;
+  plugins: ForgePlugin[];
+}
+
+export function getPluginGroupInfo(): PluginGroupInfo[] {
+  return [
+    { id: 'core', label: 'Core', plugins: forgeCorePlugins },
+    { id: 'elevate', label: 'Elevate', plugins: forgeElevatePlugins },
+    { id: 'ops', label: 'Ops', plugins: forgeOpsPlugins },
+  ];
 }

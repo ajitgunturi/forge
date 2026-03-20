@@ -2,7 +2,7 @@ import { ForgePlugin } from '../../contracts/forge-plugin.js';
 import { FORGE_MANAGED_END, FORGE_MANAGED_START, FORGE_USER_END, FORGE_USER_START } from './copilot.js';
 import { getExposedPluginName, getPluginRoute } from './exposure.js';
 
-type AnalyzerDomain = 'discussions' | 'issues' | 'pr-reviews' | 'commit-craft' | 'pr-architecture' | 'review-quality';
+type AnalyzerDomain = 'discussions' | 'issues' | 'pr-reviews' | 'commit-craft' | 'pr-architecture' | 'review-quality' | 'release-notes';
 
 interface AnalyzerPromptContext {
   analyzerDescription: string;
@@ -27,6 +27,7 @@ function getAnalyzerDomain(entry: ForgePlugin): AnalyzerDomain {
   if (domain === 'commit-craft') return 'commit-craft';
   if (domain === 'pr-architecture') return 'pr-architecture';
   if (domain === 'review-quality') return 'review-quality';
+  if (domain === 'release-notes') return 'release-notes';
   return 'discussions';
 }
 
@@ -89,6 +90,18 @@ function getAnalyzerPromptContext(entry: ForgePlugin): AnalyzerPromptContext {
       subjectSingularLower: 'code review',
       counterpartPlural: 'GitHub Issues and Discussions',
       narrowingHint: 'reviewer username, date range, or PR author',
+    };
+  }
+
+  if (domain === 'release-notes') {
+    return {
+      analyzerDescription: 'Generate structured release notes by synthesizing commits, PRs, and issues between two refs or dates.',
+      workflowTitle: 'Release Notes Generator Workflow',
+      roleName: 'Forge Release Notes Generator',
+      subjectPlural: 'release notes from commits, PRs, and issues',
+      subjectSingularLower: 'release',
+      counterpartPlural: 'GitHub Discussions and code review analysis',
+      narrowingHint: 'ref range, date range, or label filters',
     };
   }
 
@@ -180,6 +193,30 @@ function getAnalyzerExecutionGuidance(entry: ForgePlugin): AnalyzerExecutionGuid
         '- When a PR is too large, coach on how to split into a stack of dependent PRs.',
       ],
       geminiPromptLine: 'Primary data path: read-only `gh pr list --json` / `gh pr view --json`, with current-branch PR detection when no PR number is provided.',
+    };
+  }
+
+  if (domain === 'release-notes') {
+    return {
+      agentInstructions: [
+        'Use read-only `git log --oneline <from>..<to>` to fetch commits between the specified refs.',
+        'Use `gh api repos/{owner}/{repo}/compare/{base}...{head}` for the compare view with associated PRs.',
+        'Use `gh pr list --state merged --json title,number,labels,body --search "merged:>YYYY-MM-DD"` for merged PRs in the range.',
+        'Use `gh issue list --state closed --json title,number,labels --search "closed:>YYYY-MM-DD"` for resolved issues.',
+        'Use `gh release list --limit 5` to detect existing release note format conventions.',
+        'Group commits by type (feat/fix/chore) using Conventional Commits detection or PR labels.',
+        'Extract breaking changes from PR descriptions and highlight them in a dedicated section.',
+        'Auto-detect the repo\'s existing release note format from prior releases before generating new notes.',
+        'Output markdown by default, suitable for pasting into `gh release create --notes`.',
+      ],
+      workflowRules: [
+        '- Primary data path: read-only `git log`, `gh api`, `gh pr list`, `gh issue list`, and `gh release list` commands.',
+        '- Detect existing release note conventions from prior releases before generating.',
+        '- Group changes by type (features, fixes, chores) and link to PRs/issues.',
+        '- Extract and highlight breaking changes in a dedicated section.',
+        '- Handle repos with and without prior releases gracefully.',
+      ],
+      geminiPromptLine: 'Primary data path: read-only `git log`, `gh api`, `gh pr list`, `gh issue list`, and `gh release list` commands run from the current repository.',
     };
   }
 

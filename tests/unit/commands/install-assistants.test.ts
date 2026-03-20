@@ -4,12 +4,17 @@ import {
   buildInteractiveInstallSummary,
   renderInteractiveInstallerScreen,
   resolveInteractiveAssistantChoice,
+  renderPluginGroupPicker,
+  buildPluginGroupChoices,
+  resolvePluginGroupChoice,
 } from '../../../src/commands/install-assistants.js';
 import {
   forgeCorePlugins,
   forgeElevatePlugins,
+  forgeOpsPlugins,
   forgePlugins,
   resolvePluginGroups,
+  getPluginGroupInfo,
 } from '../../../src/services/assistants/summonables.js';
 
 describe('interactive installer screen', () => {
@@ -44,12 +49,14 @@ describe('interactive installer screen', () => {
   it('resolves plugin groups to the correct plugin sets', () => {
     expect(resolvePluginGroups(['core'])).toEqual(forgeCorePlugins);
     expect(resolvePluginGroups(['elevate'])).toEqual(forgeElevatePlugins);
-    expect(resolvePluginGroups(['core', 'elevate'])).toEqual(forgePlugins);
+    expect(resolvePluginGroups(['ops'])).toEqual(forgeOpsPlugins);
+    expect(resolvePluginGroups(['core', 'elevate', 'ops'])).toEqual(forgePlugins);
     expect(resolvePluginGroups([])).toEqual([]);
 
     expect(forgeCorePlugins).toHaveLength(3);
     expect(forgeElevatePlugins).toHaveLength(3);
-    expect(forgePlugins).toHaveLength(6);
+    expect(forgeOpsPlugins).toHaveLength(1);
+    expect(forgePlugins).toHaveLength(7);
 
     const coreIds = forgeCorePlugins.map((p) => p.id);
     expect(coreIds).toContain('forge-discussion-analyzer');
@@ -60,6 +67,9 @@ describe('interactive installer screen', () => {
     expect(elevateIds).toContain('forge-commit-craft-coach');
     expect(elevateIds).toContain('forge-pr-architect');
     expect(elevateIds).toContain('forge-review-quality-coach');
+
+    const opsIds = forgeOpsPlugins.map((p) => p.id);
+    expect(opsIds).toContain('forge-release-notes-generator');
   });
 
   it('builds interactive result checklists for installer output', () => {
@@ -80,5 +90,66 @@ describe('interactive installer screen', () => {
       status: 'skipped',
       message: 'already up to date',
     })).toEqual(['Already up to date']);
+  });
+});
+
+describe('interactive plugin group picker', () => {
+  it('renders the plugin group picker with group names and plugin listings', () => {
+    const output = renderPluginGroupPicker();
+
+    expect(output).toContain('Which plugin groups would you like to install?');
+    expect(output).toContain('1)');
+    expect(output).toContain('Core (default)');
+    expect(output).toContain('2)');
+    expect(output).toContain('3)');
+    expect(output).toContain('All');
+  });
+
+  it('displays plugin display names from summonables registry', () => {
+    const output = renderPluginGroupPicker();
+
+    expect(output).toContain('Forge Discussion Analyzer');
+    expect(output).toContain('Forge Issue Analyzer');
+    expect(output).toContain('Forge PR Comments Analyzer');
+  });
+
+  it('builds choices dynamically from plugin group info', () => {
+    const groups = getPluginGroupInfo();
+    const choices = buildPluginGroupChoices(groups);
+
+    expect(choices.length).toBeGreaterThanOrEqual(2);
+    expect(choices[0].choice).toBe('1');
+    expect(choices[0].label).toContain('Core');
+    expect(choices[0].groups).toEqual(['core']);
+
+    const allChoice = choices.find((c) => c.label === 'All');
+    expect(allChoice).toBeDefined();
+    expect(allChoice!.groups).toContain('core');
+    expect(allChoice!.groups).toContain('elevate');
+    expect(allChoice!.groups).toContain('ops');
+  });
+
+  it('resolves choice 1 and empty input to core', () => {
+    expect(resolvePluginGroupChoice('')).toEqual(['core']);
+    expect(resolvePluginGroupChoice('1')).toEqual(['core']);
+  });
+
+  it('resolves choice 2 to core + non-core groups', () => {
+    const result = resolvePluginGroupChoice('2');
+    expect(result).toContain('core');
+    expect(result).toContain('elevate');
+    expect(result).toContain('ops');
+  });
+
+  it('resolves choice 3 (All) to all groups', () => {
+    const result = resolvePluginGroupChoice('3');
+    expect(result).toContain('core');
+    expect(result).toContain('elevate');
+    expect(result).toContain('ops');
+  });
+
+  it('returns null for unknown choices', () => {
+    expect(resolvePluginGroupChoice('99')).toBeNull();
+    expect(resolvePluginGroupChoice('invalid')).toBeNull();
   });
 });

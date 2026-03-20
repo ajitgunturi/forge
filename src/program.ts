@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { installAssistantsCommand } from "./commands/install-assistants.js";
 import { uninstallAssistantsCommand } from "./commands/uninstall-assistants.js";
+import { statusCommand } from "./commands/status.js";
 import { AssistantId } from "./contracts/assistants.js";
 import { PluginGroup, PLUGIN_GROUPS } from "./services/assistants/summonables.js";
 
@@ -41,7 +42,7 @@ export async function createProgram(): Promise<Command> {
     .option("--cwd <path>", "The working directory to run the command in.", process.cwd())
     .option("--verbose", "Show detailed installer update output.")
     .option("--assistants <targets>", "Install or remove assistant assets for: all, copilot, claude, codex, or gemini.")
-    .option("--plugins <group>", "Plugin group to install: core (default), elevate, or all.")
+    .option("--plugins <group>", "Plugin group to install: core (default), elevate, ops, or all.")
     .option("--uninstall", "Remove Forge assistant assets instead of installing them.")
     .hook("preAction", (thisCommand) => {
       const options = thisCommand.opts();
@@ -50,6 +51,14 @@ export async function createProgram(): Promise<Command> {
       }
     })
     .showHelpAfterError("(run with --help for usage)");
+
+  program
+    .command('status')
+    .description('Show installed plugins, active assistants, and current Forge version.')
+    .action(async () => {
+      const options = program.opts<ProgramOptions>();
+      await statusCommand(options.cwd, { version: manifest.version ?? '0.0.0' });
+    });
 
   program.action(async (options: ProgramOptions) => {
     const assistantSelection = parseAssistantSelection(options.assistants);
@@ -108,9 +117,11 @@ function parsePluginSelection(value?: string): PluginGroup[] | undefined {
       return ['core'];
     case 'elevate':
       return ['elevate'];
+    case 'ops':
+      return ['ops'];
     case 'all':
       return [...PLUGIN_GROUPS];
     default:
-      throw new Error(`Unknown plugin group "${value}". Use one of: core, elevate, all.`);
+      throw new Error(`Unknown plugin group "${value}". Use one of: core, elevate, ops, all.`);
   }
 }

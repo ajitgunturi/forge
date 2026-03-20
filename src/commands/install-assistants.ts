@@ -11,6 +11,8 @@ import {
   forgePRArchitectEntry,
   forgeReviewQualityCoachEntry,
   PluginGroup,
+  getPluginGroupInfo,
+  PluginGroupInfo,
 } from '../services/assistants/summonables.js';
 import { getExposedPluginName } from '../services/assistants/exposure.js';
 
@@ -49,7 +51,7 @@ export async function installAssistantsCommand(
     const interactive = !options.assistants && process.stdin.isTTY && process.stdout.isTTY;
     const styling = createInstallStyling(interactive);
     const requestedAssistants = options.assistants ?? await resolveAssistantSelection(options.version, styling);
-    const pluginGroups = options.pluginGroups ?? DEFAULT_PLUGIN_GROUPS;
+    const pluginGroups = options.pluginGroups ?? await resolvePluginGroupSelection(interactive, styling);
     printInstallTargets(requestedAssistants, cwd, { interactive, styling });
 
     const results = await assistantInstallService.installDefaultSummonables(cwd, requestedAssistants, pluginGroups);
@@ -112,6 +114,106 @@ async function resolveAssistantSelection(version: string | undefined, styling: I
   } finally {
     rl.close();
   }
+}
+
+async function resolvePluginGroupSelection(interactive: boolean, styling: InstallStyling): Promise<PluginGroup[]> {
+  if (!interactive) {
+    return DEFAULT_PLUGIN_GROUPS;
+  }
+
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    console.log(renderPluginGroupPicker(styling));
+    const answer = (await rl.question(styling.bold('  Choice [1]: '))).trim();
+    const selection = resolvePluginGroupChoice(answer);
+    if (selection) {
+      return selection;
+    }
+    console.log(styling.yellow('\n  Unknown choice. Defaulting to Core.\n'));
+    return DEFAULT_PLUGIN_GROUPS;
+  } finally {
+    rl.close();
+  }
+}
+
+export function renderPluginGroupPicker(styling: InstallStyling = createInstallStyling(false)): string {
+  const groups = getPluginGroupInfo();
+  const choices = buildPluginGroupChoices(groups);
+  const lines = [
+    '',
+    `  ${styling.bold('Which plugin groups would you like to install?')}`,
+    '',
+  ];
+
+  for (const choice of choices) {
+    lines.push(`  ${styling.bold(`${choice.choice})`)} ${choice.label}`);
+    lines.push(`     ${styling.dim(choice.pluginNames)}`);
+    lines.push('');
+  }
+
+  return lines.join('\n');
+}
+
+export interface PluginGroupChoice {
+  choice: string;
+  label: string;
+  pluginNames: string;
+  groups: PluginGroup[];
+}
+
+export function buildPluginGroupChoices(groups: PluginGroupInfo[]): PluginGroupChoice[] {
+  const coreGroup = groups.find((g) => g.id === 'core');
+  const nonCoreGroups = groups.filter((g) => g.id !== 'core');
+
+  const choices: PluginGroupChoice[] = [];
+
+  choices.push({
+    choice: '1',
+    label: 'Core (default)',
+    pluginNames: coreGroup ? coreGroup.plugins.map((p) => p.displayName).join(', ') : '',
+    groups: ['core'],
+  });
+
+  if (nonCoreGroups.length > 0) {
+    const cumulativeGroups: PluginGroup[] = ['core'];
+    const additionalNames: string[] = [];
+
+    for (const group of nonCoreGroups) {
+      cumulativeGroups.push(group.id);
+      additionalNames.push(...group.plugins.map((p) => p.displayName));
+    }
+
+    choices.push({
+      choice: '2',
+      label: `Core + ${nonCoreGroups.map((g) => g.label).join(' + ')}`,
+      pluginNames: `+ ${additionalNames.join(', ')}`,
+      groups: [...cumulativeGroups],
+    });
+
+    choices.push({
+      choice: '3',
+      label: 'All',
+      pluginNames: 'Everything above',
+      groups: [...cumulativeGroups],
+    });
+  }
+
+  return choices;
+}
+
+export function resolvePluginGroupChoice(answer: string): PluginGroup[] | null {
+  if (answer === '' || answer === '1') {
+    return ['core'];
+  }
+
+  const groups = getPluginGroupInfo();
+  const choices = buildPluginGroupChoices(groups);
+  const matched = choices.find((c) => c.choice === answer);
+  return matched ? matched.groups : null;
 }
 
 function printInstallTargets(
