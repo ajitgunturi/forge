@@ -9,7 +9,8 @@ export NPM_TOKEN=your_npm_token_here
 make release v1.0.0
 ```
 
-This one command now:
+This command:
+
 - publishes npm
 - pushes the current branch
 - creates or reuses the matching `vX.Y.Z` tag
@@ -23,23 +24,30 @@ This one command now:
 ```bash
 npx forge-ai-assist@latest
 npm_config_prefer_online=true npx forge-ai-assist@latest
-node "$HOME/.copilot/forge/bin/forge.mjs" --help
 ```
 
 Expected result:
 
 - `~/.copilot/agents/forge-discussion-analyzer.agent.md` exists
-- `~/.copilot/agents/forge-issue-analyzer.agent.md` exists
-- `~/.copilot/forge/node_modules` exists
-- no manual `npm install` is needed inside `~/.copilot/forge`
-- users can add their own instructions inside the preserved user-customizations block of `forge-discussion-analyzer.agent.md` without losing them on upgrade
+- `~/.claude/commands/forge/discussion-analyzer.md` exists
+- `~/.codex/skills/forge-discussion-analyzer/SKILL.md` exists
+- `~/.gemini/commands/forge/discussion-analyzer.toml` exists
+- `~/.claude/forge/workflows/discussion-analyzer.md` exists
+- `~/.copilot/forge/bin/forge.mjs` does not exist
+- `~/.claude/forge/bin/forge.mjs` does not exist
+- users can add their own instructions inside the preserved user-customizations block without losing them on upgrade
 
-## Optional split flow
+## Breaking Change Reminder
 
-If you need to handle GitHub tagging separately, the old fallback still exists:
+Forge no longer ships the assistant-side bundled runtime, and `forge --run ...` is intentionally gone.
+Release notes should call out that assistants now execute read-only `gh` commands directly through the installed assets.
+
+## Optional Split Flow
+
+If you need to handle GitHub tagging separately, the fallback still exists:
 
 ```bash
 make release-tag v1.0.0
 ```
 
-This fallback now uses the same release script, so it also regenerates GitHub release notes from commit history instead of reusing a stale static notes file.
+This path uses the same release script, so it still regenerates GitHub release notes from commit history.

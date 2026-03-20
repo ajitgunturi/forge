@@ -21,47 +21,45 @@ describe('Claude assistant translation', () => {
     await rm(tempHomePath, { recursive: true, force: true });
   });
 
-  it('renders Claude command, agent, workflow, and bundled runtime assets', async () => {
+  it('renders Claude command, agent, and workflow assets with direct gh guidance', async () => {
     const [result] = await assistantInstallService.installDefaultSummonables(tempRepoPath, ['claude']);
-    const commandPath = join(tempHomePath, '.claude/commands/forge/discussion-analyzer.md');
-    const agentPath = join(tempHomePath, '.claude/agents/forge-discussion-analyzer.md');
-    const workflowPath = join(tempHomePath, '.claude/forge/workflows/discussion-analyzer.md');
+    const discussionCommandPath = join(tempHomePath, '.claude/commands/forge/discussion-analyzer.md');
+    const discussionAgentPath = join(tempHomePath, '.claude/agents/forge-discussion-analyzer.md');
+    const discussionWorkflowPath = join(tempHomePath, '.claude/forge/workflows/discussion-analyzer.md');
     const issueCommandPath = join(tempHomePath, '.claude/commands/forge/issue-analyzer.md');
     const issueAgentPath = join(tempHomePath, '.claude/agents/forge-issue-analyzer.md');
-    const issueWorkflowPath = join(tempHomePath, '.claude/forge/workflows/issue-analyzer.md');
-    const runtimeEntryPath = join(tempHomePath, '.claude/forge/bin/forge.mjs');
+    const prAgentPath = join(tempHomePath, '.claude/agents/forge-pr-comments-analyzer.md');
+    const prWorkflowPath = join(tempHomePath, '.claude/forge/workflows/pr-comments-analyzer.md');
 
     expect(result.status).toBe('success');
 
-    const command = await readFile(commandPath, 'utf8');
-    const agent = await readFile(agentPath, 'utf8');
-    const workflow = await readFile(workflowPath, 'utf8');
+    const discussionCommand = await readFile(discussionCommandPath, 'utf8');
+    const discussionAgent = await readFile(discussionAgentPath, 'utf8');
+    const discussionWorkflow = await readFile(discussionWorkflowPath, 'utf8');
     const issueCommand = await readFile(issueCommandPath, 'utf8');
     const issueAgent = await readFile(issueAgentPath, 'utf8');
-    const issueWorkflow = await readFile(issueWorkflowPath, 'utf8');
+    const prAgent = await readFile(prAgentPath, 'utf8');
+    const prWorkflow = await readFile(prWorkflowPath, 'utf8');
 
-    expect(command).toContain('---\nname: forge:discussion-analyzer');
-    expect(command).toContain('argument-hint: "<question>"');
-    expect(command).toContain(`@${workflowPath}`);
-    expect(command).toContain('<!-- BEGIN USER CUSTOMIZATIONS -->');
-
-    expect(agent).toContain('---\nname: forge-discussion-analyzer');
-    expect(agent).toContain('tools: Bash, Read');
-    expect(agent).toContain('You are the Forge Discussion Analyzer.');
-    expect(agent).toContain('node "$HOME/.claude/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "<question>"');
-    expect(agent).toContain('<!-- BEGIN USER CUSTOMIZATIONS -->');
-
-    expect(workflow).toContain('node "$HOME/.claude/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "$ARGUMENTS"');
-    expect(workflow).toContain('Every query must use Forge live fetches');
+    expect(discussionCommand).toContain('---\nname: forge:discussion-analyzer');
+    expect(discussionCommand).toContain(`@${discussionWorkflowPath}`);
+    expect(discussionCommand).toContain('Analyze GitHub Discussions for the current repository using read-only gh CLI live fetches.');
+    expect(discussionAgent).toContain('You are the Forge Discussion Analyzer.');
+    expect(discussionAgent).toContain('`gh api graphql`');
+    expect(discussionAgent).not.toContain('forge.mjs');
+    expect(discussionAgent).not.toContain('--run');
+    expect(discussionWorkflow).toContain('gh api graphql');
+    expect(discussionWorkflow).not.toContain('forge.mjs');
 
     expect(issueCommand).toContain('---\nname: forge:issue-analyzer');
-    expect(issueCommand).toContain(`@${issueWorkflowPath}`);
-    expect(issueAgent).toContain('---\nname: forge-issue-analyzer');
-    expect(issueAgent).toContain('You are the Forge Issue Analyzer.');
-    expect(issueAgent).toContain('node "$HOME/.claude/forge/bin/forge.mjs" --run forge-issue-analyzer --question "<question>"');
-    expect(issueWorkflow).toContain('node "$HOME/.claude/forge/bin/forge.mjs" --run forge-issue-analyzer --question "$ARGUMENTS"');
+    expect(issueAgent).toContain('`gh issue list`');
+    expect(issueAgent).not.toContain('forge.mjs');
 
-    await expect(access(runtimeEntryPath)).resolves.toBeUndefined();
+    expect(prAgent).toContain('`gh pr view`');
+    expect(prWorkflow).toContain('gh api repos/{owner}/{repo}/pulls/<pr>/comments');
+    expect(prWorkflow).not.toContain('forge.mjs');
+
+    await expect(access(join(tempHomePath, '.claude/forge/bin/forge.mjs'))).rejects.toThrow();
     await expect(access(join(tempHomePath, '.claude/skills/forge:discussion-analyzer/SKILL.md'))).rejects.toThrow();
   });
 
@@ -152,5 +150,29 @@ describe('Claude assistant translation', () => {
     expect(await readFile(migratedAgentPath, 'utf8')).toContain('Team legacy Claude agent customization');
     await expect(access(legacyAgentPath)).rejects.toThrow();
     await expect(access(legacySkillDir)).rejects.toThrow();
+  });
+
+  it('removes legacy Claude runtime artifacts while keeping workflow files', async () => {
+    const forgeRoot = join(tempHomePath, '.claude/forge');
+    await mkdir(join(forgeRoot, 'bin'), { recursive: true });
+    await mkdir(join(forgeRoot, 'dist'), { recursive: true });
+    await mkdir(join(forgeRoot, 'node_modules/pkg'), { recursive: true });
+    await writeFile(join(forgeRoot, 'bin/forge.mjs'), 'legacy', 'utf8');
+    await writeFile(join(forgeRoot, 'dist/index.js'), 'legacy', 'utf8');
+    await writeFile(join(forgeRoot, 'node_modules/pkg/index.js'), 'legacy', 'utf8');
+    await writeFile(join(forgeRoot, 'VERSION'), '1.0.0\n', 'utf8');
+    await writeFile(join(forgeRoot, 'package.json'), '{}', 'utf8');
+    await writeFile(join(forgeRoot, 'forge-file-manifest.json'), '{}', 'utf8');
+
+    const [result] = await assistantInstallService.installDefaultSummonables(tempRepoPath, ['claude']);
+
+    expect(result.status).toBe('success');
+    await expect(access(join(forgeRoot, 'bin/forge.mjs'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'dist'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'node_modules'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'VERSION'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'package.json'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'forge-file-manifest.json'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'workflows/discussion-analyzer.md'))).resolves.toBeUndefined();
   });
 });

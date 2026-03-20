@@ -11,7 +11,7 @@ describe('interactive installer screen', () => {
     const output = renderInteractiveInstallerScreen('1.1.2');
 
     expect(output).toContain('Forge v1.1.2');
-    expect(output).toContain('Which runtime(s) would you like to install for?');
+    expect(output).toContain('Which assistant(s) would you like to install for?');
     expect(output).toContain('1) GitHub Copilot');
     expect(output).toContain('2) Claude Code');
     expect(output).toContain('3) Gemini');
@@ -40,13 +40,12 @@ describe('interactive installer screen', () => {
       id: 'codex',
       status: 'success',
       message: 'ok',
-      details: ['wrote VERSION (1.1.2)', 'wrote manifest /tmp/forge-file-manifest.json'],
+      details: ['removed legacy runtime /tmp/.codex/forge/bin/forge.mjs'],
     })).toEqual([
       'Installed skill',
       'Installed agents',
-      'Installed Forge runtime',
-      'Wrote VERSION',
-      'Wrote file manifest',
+      'Installed workflow',
+      'Removed legacy runtime',
     ]);
 
     expect(buildInteractiveOperationLines({

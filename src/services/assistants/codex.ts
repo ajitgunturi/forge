@@ -47,16 +47,11 @@ export class CodexAdapter implements AssistantAdapter {
 
   resolveInstallLayout(_cwd: string): AssistantInstallLayout {
     const rootPath = path.join(os.homedir(), '.codex');
-    const runtimePath = path.join(rootPath, 'forge');
     return {
       rootPath,
       agentsPath: path.join(rootPath, 'agents'),
       skillsPath: path.join(rootPath, 'skills'),
-      workflowsPath: path.join(runtimePath, 'workflows'),
-      runtimePath,
-      runtimeEntryPath: path.join(runtimePath, 'bin', 'forge.mjs'),
-      metadataPath: path.join(runtimePath, 'forge-file-manifest.json'),
-      versionPath: path.join(runtimePath, 'VERSION'),
+      workflowsPath: path.join(rootPath, 'forge', 'workflows'),
     };
   }
 
@@ -75,23 +70,22 @@ export class CodexAdapter implements AssistantAdapter {
   getSupplementalAssets(cwd: string, entry: ForgePlugin): AssistantSupplementalAsset[] {
     const layout = this.resolveInstallLayout(cwd);
     const agentName = getExposedPluginName(this.id, 'agent', entry);
-    const runtimeEntryCommand = 'node "$HOME/.codex/forge/bin/forge.mjs"';
 
     return [
       {
         targetPath: path.join(layout.agentsPath, `${agentName}.md`),
-        content: renderCodexAgent(entry, runtimeEntryCommand),
+        content: renderCodexAgent(entry),
       },
       {
         targetPath: path.join(layout.agentsPath, `${agentName}.toml`),
-        content: renderCodexAgentToml(entry, runtimeEntryCommand),
+        content: renderCodexAgentToml(entry),
       },
       {
         targetPath: path.join(
           layout.workflowsPath ?? path.join(layout.rootPath, 'forge', 'workflows'),
           getWorkflowFileName(entry),
         ),
-        content: renderCodexWorkflow(entry, runtimeEntryCommand),
+        content: renderCodexWorkflow(entry),
       },
     ];
   }

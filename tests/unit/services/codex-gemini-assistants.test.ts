@@ -21,31 +21,42 @@ describe('Codex assistant translation', () => {
     await rm(tempHomePath, { recursive: true, force: true });
   });
 
-  it('renders Codex skill, agent, TOML, workflow, and bundled runtime assets', async () => {
+  it('renders Codex skill, agent, TOML, and workflow assets with direct gh guidance', async () => {
     const [result] = await assistantInstallService.installDefaultSummonables(tempRepoPath, ['codex']);
-    const skillPath = join(tempHomePath, '.codex/skills/forge-discussion-analyzer/SKILL.md');
-    const agentPath = join(tempHomePath, '.codex/agents/forge-discussion-analyzer.md');
-    const agentTomlPath = join(tempHomePath, '.codex/agents/forge-discussion-analyzer.toml');
-    const workflowPath = join(tempHomePath, '.codex/forge/workflows/discussion-analyzer.md');
-    const issueSkillPath = join(tempHomePath, '.codex/skills/forge-issue-analyzer/SKILL.md');
-    const issueAgentPath = join(tempHomePath, '.codex/agents/forge-issue-analyzer.md');
-    const issueAgentTomlPath = join(tempHomePath, '.codex/agents/forge-issue-analyzer.toml');
+    const discussionSkillPath = join(tempHomePath, '.codex/skills/forge-discussion-analyzer/SKILL.md');
+    const discussionAgentPath = join(tempHomePath, '.codex/agents/forge-discussion-analyzer.md');
+    const discussionAgentTomlPath = join(tempHomePath, '.codex/agents/forge-discussion-analyzer.toml');
+    const discussionWorkflowPath = join(tempHomePath, '.codex/forge/workflows/discussion-analyzer.md');
     const issueWorkflowPath = join(tempHomePath, '.codex/forge/workflows/issue-analyzer.md');
+    const prAgentPath = join(tempHomePath, '.codex/agents/forge-pr-comments-analyzer.md');
+    const prSkillPath = join(tempHomePath, '.codex/skills/forge-pr-comments-analyzer/SKILL.md');
 
     expect(result.status).toBe('success');
-    expect(await readFile(skillPath, 'utf8')).toContain('`$forge-discussion-analyzer`');
-    expect(await readFile(skillPath, 'utf8')).toContain(`@${workflowPath}`);
-    expect(await readFile(agentPath, 'utf8')).toContain('<codex_agent_role>');
-    expect(await readFile(agentPath, 'utf8')).toContain('node "$HOME/.codex/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "<question>"');
-    expect(await readFile(agentTomlPath, 'utf8')).toContain('sandbox_mode = "workspace-write"');
-    expect(await readFile(agentTomlPath, 'utf8')).toContain('node "$HOME/.codex/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "<question>"');
-    expect(await readFile(workflowPath, 'utf8')).toContain('node "$HOME/.codex/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "$ARGUMENTS"');
 
-    expect(await readFile(issueSkillPath, 'utf8')).toContain('`$forge-issue-analyzer`');
-    expect(await readFile(issueSkillPath, 'utf8')).toContain(`@${issueWorkflowPath}`);
-    expect(await readFile(issueAgentPath, 'utf8')).toContain('node "$HOME/.codex/forge/bin/forge.mjs" --run forge-issue-analyzer --question "<question>"');
-    expect(await readFile(issueAgentTomlPath, 'utf8')).toContain('node "$HOME/.codex/forge/bin/forge.mjs" --run forge-issue-analyzer --question "<question>"');
-    expect(await readFile(issueWorkflowPath, 'utf8')).toContain('node "$HOME/.codex/forge/bin/forge.mjs" --run forge-issue-analyzer --question "$ARGUMENTS"');
+    const discussionSkill = await readFile(discussionSkillPath, 'utf8');
+    const discussionAgent = await readFile(discussionAgentPath, 'utf8');
+    const discussionAgentToml = await readFile(discussionAgentTomlPath, 'utf8');
+    const discussionWorkflow = await readFile(discussionWorkflowPath, 'utf8');
+    const issueWorkflow = await readFile(issueWorkflowPath, 'utf8');
+    const prAgent = await readFile(prAgentPath, 'utf8');
+    const prSkill = await readFile(prSkillPath, 'utf8');
+
+    expect(discussionSkill).toContain('`$forge-discussion-analyzer`');
+    expect(discussionSkill).toContain(`@${discussionWorkflowPath}`);
+    expect(discussionSkill).toContain('gh api graphql');
+    expect(discussionSkill).not.toContain('forge.mjs');
+    expect(discussionAgent).toContain('<codex_agent_role>');
+    expect(discussionAgent).toContain('`gh api graphql`');
+    expect(discussionAgent).not.toContain('forge.mjs');
+    expect(discussionAgentToml).toContain('sandbox_mode = "workspace-write"');
+    expect(discussionAgentToml).toContain('`gh api graphql`');
+    expect(discussionAgentToml).not.toContain('forge.mjs');
+    expect(discussionWorkflow).toContain('gh api graphql');
+    expect(issueWorkflow).toContain('gh issue list');
+    expect(prAgent).toContain('`gh pr view`');
+    expect(prSkill).toContain('gh pr view');
+
+    await expect(access(join(tempHomePath, '.codex/forge/bin/forge.mjs'))).rejects.toThrow();
   });
 
   it('preserves Codex skill customizations on reinstall', async () => {
@@ -179,6 +190,30 @@ describe('Codex assistant translation', () => {
     expect(skill).toContain('Team Codex customization to preserve');
     expect(skill).not.toContain('legacy nested managed content');
   });
+
+  it('removes legacy Codex runtime artifacts while keeping workflows', async () => {
+    const forgeRoot = join(tempHomePath, '.codex/forge');
+    await mkdir(join(forgeRoot, 'bin'), { recursive: true });
+    await mkdir(join(forgeRoot, 'dist'), { recursive: true });
+    await mkdir(join(forgeRoot, 'node_modules/pkg'), { recursive: true });
+    await writeFile(join(forgeRoot, 'bin/forge.mjs'), 'legacy', 'utf8');
+    await writeFile(join(forgeRoot, 'dist/index.js'), 'legacy', 'utf8');
+    await writeFile(join(forgeRoot, 'node_modules/pkg/index.js'), 'legacy', 'utf8');
+    await writeFile(join(forgeRoot, 'VERSION'), '1.0.0\n', 'utf8');
+    await writeFile(join(forgeRoot, 'package.json'), '{}', 'utf8');
+    await writeFile(join(forgeRoot, 'forge-file-manifest.json'), '{}', 'utf8');
+
+    const [result] = await assistantInstallService.installDefaultSummonables(tempRepoPath, ['codex']);
+
+    expect(result.status).toBe('success');
+    await expect(access(join(forgeRoot, 'bin/forge.mjs'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'dist'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'node_modules'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'VERSION'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'package.json'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'forge-file-manifest.json'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'workflows/discussion-analyzer.md'))).resolves.toBeUndefined();
+  });
 });
 
 describe('Gemini assistant translation', () => {
@@ -198,27 +233,32 @@ describe('Gemini assistant translation', () => {
     await rm(tempHomePath, { recursive: true, force: true });
   });
 
-  it('renders Gemini command, agent, workflow, and bundled runtime assets', async () => {
+  it('renders Gemini command, agent, and workflow assets with direct gh guidance', async () => {
     const [result] = await assistantInstallService.installDefaultSummonables(tempRepoPath, ['gemini']);
-    const commandPath = join(tempHomePath, '.gemini/commands/forge/discussion-analyzer.toml');
-    const agentPath = join(tempHomePath, '.gemini/agents/forge-discussion-analyzer.md');
-    const workflowPath = join(tempHomePath, '.gemini/forge/workflows/discussion-analyzer.md');
+    const discussionCommandPath = join(tempHomePath, '.gemini/commands/forge/discussion-analyzer.toml');
+    const discussionAgentPath = join(tempHomePath, '.gemini/agents/forge-discussion-analyzer.md');
+    const discussionWorkflowPath = join(tempHomePath, '.gemini/forge/workflows/discussion-analyzer.md');
     const issueCommandPath = join(tempHomePath, '.gemini/commands/forge/issue-analyzer.toml');
-    const issueAgentPath = join(tempHomePath, '.gemini/agents/forge-issue-analyzer.md');
-    const issueWorkflowPath = join(tempHomePath, '.gemini/forge/workflows/issue-analyzer.md');
-    const command = await readFile(commandPath, 'utf8');
-    const issueCommand = await readFile(issueCommandPath, 'utf8');
+    const prCommandPath = join(tempHomePath, '.gemini/commands/forge/pr-comments-analyzer.toml');
 
     expect(result.status).toBe('success');
-    expect(command).toContain('Forge backend: node \\"$HOME/.gemini/forge/bin/forge.mjs\\" --run forge-discussion-analyzer --question \\"<question>\\"');
-    expect(command).toContain('Do not inspect the codebase, search the repository, or read files under ~/.gemini before deciding what to do.');
-    expect(await readFile(agentPath, 'utf8')).toContain('tools:\n  - read_file\n  - run_shell_command');
-    expect(await readFile(agentPath, 'utf8')).toContain('node "$HOME/.gemini/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "<question>"');
-    expect(await readFile(workflowPath, 'utf8')).toContain('node "$HOME/.gemini/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "$ARGUMENTS"');
 
-    expect(issueCommand).toContain('Forge backend: node \\"$HOME/.gemini/forge/bin/forge.mjs\\" --run forge-issue-analyzer --question \\"<question>\\"');
-    expect(await readFile(issueAgentPath, 'utf8')).toContain('node "$HOME/.gemini/forge/bin/forge.mjs" --run forge-issue-analyzer --question "<question>"');
-    expect(await readFile(issueWorkflowPath, 'utf8')).toContain('node "$HOME/.gemini/forge/bin/forge.mjs" --run forge-issue-analyzer --question "$ARGUMENTS"');
+    const discussionCommand = await readFile(discussionCommandPath, 'utf8');
+    const discussionAgent = await readFile(discussionAgentPath, 'utf8');
+    const discussionWorkflow = await readFile(discussionWorkflowPath, 'utf8');
+    const issueCommand = await readFile(issueCommandPath, 'utf8');
+    const prCommand = await readFile(prCommandPath, 'utf8');
+
+    expect(discussionCommand).toContain('gh api graphql');
+    expect(discussionCommand).not.toContain('forge.mjs');
+    expect(discussionAgent).toContain('tools:\n  - read_file\n  - run_shell_command');
+    expect(discussionAgent).toContain('`gh api graphql`');
+    expect(discussionAgent).not.toContain('forge.mjs');
+    expect(discussionWorkflow).toContain('gh api graphql');
+    expect(issueCommand).toContain('gh issue list');
+    expect(prCommand).toContain('gh pr view');
+
+    await expect(access(join(tempHomePath, '.gemini/forge/bin/forge.mjs'))).rejects.toThrow();
   });
 
   it('preserves Gemini agent customizations on reinstall', async () => {
@@ -309,5 +349,29 @@ describe('Gemini assistant translation', () => {
     expect(agent).toContain('tools:\n  - read_file\n  - run_shell_command');
     expect(agent).toContain('Team Gemini customization to preserve');
     expect(agent.match(/<!-- BEGIN USER CUSTOMIZATIONS -->/g)).toHaveLength(1);
+  });
+
+  it('removes legacy Gemini runtime artifacts while keeping workflows', async () => {
+    const forgeRoot = join(tempHomePath, '.gemini/forge');
+    await mkdir(join(forgeRoot, 'bin'), { recursive: true });
+    await mkdir(join(forgeRoot, 'dist'), { recursive: true });
+    await mkdir(join(forgeRoot, 'node_modules/pkg'), { recursive: true });
+    await writeFile(join(forgeRoot, 'bin/forge.mjs'), 'legacy', 'utf8');
+    await writeFile(join(forgeRoot, 'dist/index.js'), 'legacy', 'utf8');
+    await writeFile(join(forgeRoot, 'node_modules/pkg/index.js'), 'legacy', 'utf8');
+    await writeFile(join(forgeRoot, 'VERSION'), '1.0.0\n', 'utf8');
+    await writeFile(join(forgeRoot, 'package.json'), '{}', 'utf8');
+    await writeFile(join(forgeRoot, 'forge-file-manifest.json'), '{}', 'utf8');
+
+    const [result] = await assistantInstallService.installDefaultSummonables(tempRepoPath, ['gemini']);
+
+    expect(result.status).toBe('success');
+    await expect(access(join(forgeRoot, 'bin/forge.mjs'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'dist'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'node_modules'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'VERSION'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'package.json'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'forge-file-manifest.json'))).rejects.toThrow();
+    await expect(access(join(forgeRoot, 'workflows/discussion-analyzer.md'))).resolves.toBeUndefined();
   });
 });

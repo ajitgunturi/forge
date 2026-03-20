@@ -38,10 +38,6 @@ export interface AssistantInstallLayout {
   commandsPath?: string;
   skillsPath?: string;
   workflowsPath?: string;
-  runtimePath?: string;
-  runtimeEntryPath?: string;
-  metadataPath?: string;
-  versionPath?: string;
 }
 
 /**

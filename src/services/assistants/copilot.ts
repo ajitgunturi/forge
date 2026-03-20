@@ -4,9 +4,6 @@ import { AssistantAdapter, AssistantSupplementalAsset } from './registry.js';
 import { AssistantId, AssistantAvailability, AssistantInstallLayout } from '../../contracts/assistants.js';
 import { ForgePlugin } from '../../contracts/forge-plugin.js';
 import { entryRenderer } from './render-entry.js';
-import { AnalysisRun } from '../../contracts/analysis.js';
-import { PlanRun } from '../../contracts/planning.js';
-import { planningGenerator } from '../planning/generator.js';
 
 /**
  * GitHub Copilot adapter for Forge.
@@ -17,7 +14,7 @@ import { planningGenerator } from '../planning/generator.js';
 export class CopilotAdapter implements AssistantAdapter {
   readonly id: AssistantId = 'copilot';
   readonly name = 'GitHub Copilot';
-  readonly description = 'Native GitHub Copilot agent for repository planning.';
+  readonly description = 'Native GitHub Copilot summonables for read-only GitHub analysis.';
 
   /**
    * Checks if Copilot's environment is available.
@@ -38,16 +35,11 @@ export class CopilotAdapter implements AssistantAdapter {
 
   resolveInstallLayout(_cwd: string): AssistantInstallLayout {
     const rootPath = path.join(os.homedir(), '.copilot');
-    const runtimePath = path.join(rootPath, 'forge');
 
     return {
       rootPath,
       agentsPath: path.join(rootPath, 'agents'),
       skillsPath: path.join(rootPath, 'skills'),
-      runtimePath,
-      runtimeEntryPath: path.join(runtimePath, 'bin', 'forge.mjs'),
-      metadataPath: path.join(runtimePath, 'forge-file-manifest.json'),
-      versionPath: path.join(runtimePath, 'VERSION'),
     };
   }
 
@@ -66,25 +58,6 @@ export class CopilotAdapter implements AssistantAdapter {
         content: renderCopilotSkill(entry),
       },
     ];
-  }
-
-  /**
-   * Generates a plan for GitHub Copilot, delegating to the shared planning engine.
-   *
-   * This method remains for compatibility with the Phase 3 proof while 
-   * the rest of the system transitions to the generalized adapter model.
-   */
-  async generatePlan(analysis: AnalysisRun): Promise<PlanRun> {
-    // Delegate to shared planning engine
-    const plan = planningGenerator.generate(analysis);
-
-    // Apply Copilot-specific metadata or overrides
-    plan.metadata = {
-      ...plan.metadata,
-      suggestedReviewer: 'GitHub Copilot Assistant',
-    };
-
-    return plan;
   }
 }
 
@@ -148,5 +121,3 @@ function sanitizePlainScalar(value: string): string {
     .replace(/^["']+|["']+$/g, '')
     .trim();
 }
-
-export const COPILOT_RUNTIME_ENTRY = 'node "$HOME/.copilot/forge/bin/forge.mjs"';

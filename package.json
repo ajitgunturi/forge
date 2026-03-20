@@ -1,7 +1,7 @@
 {
   "name": "forge-ai-assist",
   "version": "1.1.16",
-  "description": "Install and run Forge Copilot summonables for GitHub discussion analysis.",
+  "description": "Install Forge assistant assets for read-only GitHub discussion, issue, and PR review analysis.",
   "keywords": [
     "copilot",
     "github-discussions",
@@ -37,7 +37,7 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "build": "tsc --project tsconfig.json",
+    "build": "node -e \"require('fs').rmSync('dist', { recursive: true, force: true })\" && tsc --project tsconfig.json",
     "prepack": "npm run build",
     "release:check": "npm run build && npm pack --dry-run",
     "release:local": "node ./scripts/release-local.mjs",

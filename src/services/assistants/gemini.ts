@@ -48,16 +48,11 @@ export class GeminiAdapter implements AssistantAdapter {
 
   resolveInstallLayout(_cwd: string): AssistantInstallLayout {
     const rootPath = path.join(os.homedir(), '.gemini');
-    const runtimePath = path.join(rootPath, 'forge');
     return {
       rootPath,
       agentsPath: path.join(rootPath, 'agents'),
       commandsPath: path.join(rootPath, 'commands'),
-      workflowsPath: path.join(runtimePath, 'workflows'),
-      runtimePath,
-      runtimeEntryPath: path.join(runtimePath, 'bin', 'forge.mjs'),
-      metadataPath: path.join(runtimePath, 'forge-file-manifest.json'),
-      versionPath: path.join(runtimePath, 'VERSION'),
+      workflowsPath: path.join(rootPath, 'forge', 'workflows'),
     };
   }
 
@@ -75,19 +70,18 @@ export class GeminiAdapter implements AssistantAdapter {
 
   getSupplementalAssets(cwd: string, entry: ForgePlugin): AssistantSupplementalAsset[] {
     const layout = this.resolveInstallLayout(cwd);
-    const runtimeEntryCommand = 'node "$HOME/.gemini/forge/bin/forge.mjs"';
 
     return [
       {
         targetPath: path.join(layout.agentsPath, `${getExposedPluginName(this.id, 'agent', entry)}.md`),
-        content: renderGeminiAgent(entry, runtimeEntryCommand),
+        content: renderGeminiAgent(entry),
       },
       {
         targetPath: path.join(
           layout.workflowsPath ?? path.join(layout.rootPath, 'forge', 'workflows'),
           getWorkflowFileName(entry),
         ),
-        content: renderGeminiWorkflow(entry, runtimeEntryCommand),
+        content: renderGeminiWorkflow(entry),
       },
     ];
   }

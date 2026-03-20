@@ -1,127 +1,79 @@
 # Forge Plugin Architecture Reference
 
-This document describes how Forge plugins (called "plugins") are designed, built, installed, and consumed by AI assistants. Use it as the authoritative reference when adding new plugins to the repo.
+This document describes how Forge plugins are defined, rendered, installed, and consumed by AI assistants.
 
 ## Core Design Principles
 
-1. **Define once, render to many.** A plugin is defined as a single `ForgePlugin` (assistant-agnostic). Four adapters (Claude, Copilot, Gemini, Codex) each render it into their native format.
-
-2. **Strictly read-only.** Plugins must never create, update, close, comment on, or mutate any GitHub resource. This applies to the Forge backend AND to any fallback instructions given to the host assistant. The `gh` CLI fallback is explicitly scoped to read-only commands.
-
-3. **Autonomous execution without repeated approvals.** Plugin instructions tell the host assistant to allow all tool executions (Bash, Read, python3, node, `gh` CLI) needed to fetch and present the analysis up front. Users should not be prompted repeatedly during a single analysis flow.
-
-4. **Live-fetch-only.** Every query triggers a live GitHub API fetch. Sidecar artifacts (`.forge/`) are summary outputs for reference, not cached inputs for future analysis.
-
-5. **Bundled runtime.** Each installation bootstraps a complete Node.js runtime (`dist/` + `node_modules/`) into the assistant's home directory so it can be invoked as a subprocess without depending on the user's system Node/npm.
-
-6. **Managed content with user customization preservation.** Installed files use HTML markers (`<!-- BEGIN FORGE MANAGED BLOCK -->` / `<!-- END FORGE MANAGED BLOCK -->`) so reinstalls replace only the managed section while preserving any user customizations.
+1. **Define once, render to many.** A plugin is defined as a single `ForgePlugin`. Claude, Copilot, Gemini, and Codex each render that definition into their own native format.
+2. **Strictly read-only.** Installed assets must never create, update, close, comment on, or mutate any GitHub resource.
+3. **Direct `gh` execution.** The installed assets tell the host assistant to use read-only `gh` commands directly. Forge no longer ships an assistant-side Node runtime.
+4. **Live-fetch-only.** Every answer must come from a fresh GitHub fetch at execution time.
+5. **Managed content with preserved customizations.** Installed files use Forge-managed markers so reinstalls replace only the managed block while leaving user customizations intact.
+6. **Legacy runtime cleanup.** Reinstalls remove old `forge/bin`, `forge/dist`, `forge/node_modules`, `forge/VERSION`, `forge/package.json`, and `forge-file-manifest.json` artifacts from earlier releases.
 
 ## Architecture Overview
 
-```
+```text
 ForgePlugin (assistant-agnostic definition)
        │
-       ├─── AssistantAdapter.render(entry) ──► Native format per assistant
-       │      ├── Claude:  Markdown command + agent + workflow
+       ├── AssistantAdapter.render(entry) ──► Native format per assistant
+       │      ├── Claude: Markdown command + agent + workflow
        │      ├── Copilot: Markdown agent + skill
-       │      ├── Gemini:  TOML command + agent + workflow
-       │      └── Codex:   Markdown skill + agent (md+toml) + workflow
+       │      ├── Gemini: TOML command + agent + workflow
+       │      └── Codex: Markdown skill + agent (md+toml) + workflow
        │
-       ├─── AssistantInstallService ──► Writes to ~/.{assistant}/
-       │      ├── prepareRuntime(): bootstrap dist/, node_modules/, forge.mjs
-       │      └── installOne(): write primary + supplemental assets, migrate legacy
-       │
-       └─── CLI runtime (forge.mjs --run <id> --question "...")
-              ├── Intent analysis: parse question → filters, scope, answer shape
-              ├── Fetch: GitHub GraphQL/REST → raw records
-              ├── Prepare: classify, extract, digest
-              ├── Render: markdown answer
-              └── Persist: .forge/{domain}/summary/
+       └── AssistantInstallService
+              ├── create needed directories
+              ├── remove legacy bundled runtime artifacts
+              ├── write primary + supplemental assets
+              └── preserve user customizations on reinstall
 ```
 
-## Plugin Definition: ForgePlugin
+At execution time, the host assistant runs read-only GitHub CLI commands directly in the current repository:
+
+- Discussions: `gh api graphql`
+- Issues: `gh issue list` and `gh issue view --json`
+- PR reviews: `gh pr view` / `gh pr list --json`, plus read-only `gh api repos/{owner}/{repo}/pulls/<pr>/comments` when inline review comments are needed
+
+## Plugin Definition
 
 **File:** `src/contracts/forge-plugin.ts`
 
-```typescript
+```ts
 interface ForgePlugin {
-  id: string;                           // Stable kebab-case ID, e.g. 'forge-discussion-analyzer'
-  displayName: string;                  // Human-facing name
-  purpose: string;                      // One-sentence scope description
-  instructions: string;                 // Bullet-point instructions for the host assistant
-  capabilities: ForgePluginCapability[]; // What this plugin can do
-  commands: ForgePluginCommand[];        // How to invoke it
-  principles: string[];                 // Operating principles
-  metadata?: Record<string, any>;       // Domain-specific extensions (e.g. analyzerDomain)
+  id: string;
+  displayName: string;
+  purpose: string;
+  instructions: string;
+  capabilities: ForgePluginCapability[];
+  commands: ForgePluginCommand[];
+  principles: string[];
+  metadata?: Record<string, any>;
 }
 ```
 
 ### Naming Convention
 
-- `id` must be prefixed with `forge-` to produce namespaced names (`forge:local-name`) for Claude/Gemini commands.
-- The first segment before the first `-` becomes the namespace; the rest becomes the local name.
-- Example: `forge-discussion-analyzer` → namespace `forge`, local name `discussion-analyzer`, exposed as `forge:discussion-analyzer` on Claude/Gemini.
+- `id` must be prefixed with `forge-`.
+- The first segment becomes the Claude/Gemini namespace.
+- Example: `forge-discussion-analyzer` becomes `forge:discussion-analyzer`.
 
 ### Instructions Contract
 
-The `instructions` field is the core behavioral contract with the host assistant. Every plugin MUST include these instruction categories:
+Every plugin must include:
 
-#### Tool Approval (autonomous execution)
-```
-Allow all tool executions (Bash, Read, python3, node, and `gh` CLI) needed to fetch
-and present the analysis without repeated approval prompts. Approve the full analysis
-pipeline up front.
-```
+- Tool approval guidance for `Bash`, `Read`, `python3`, `node`, and `gh` CLI.
+- A strict read-only rule.
+- A direct `gh` data path for its domain.
+- Guardrails against installing `gh` extensions or mutating `~/.config/gh`.
+- Scope redirection when the user asks about a different domain.
 
-#### Read-Only Enforcement
-```
-This analyzer is strictly read-only. Never create, update, close, comment on, or
-mutate any GitHub resource.
-```
+### `metadata.analyzerDomain`
 
-#### Fallback Scoping
-```
-If Forge fails or times out because of network or GitHub API issues, fall back to
-read-only `gh` CLI commands (e.g. `gh issue list`, `gh issue view`) to fetch the data.
-Never run mutation commands such as `gh issue create`, `gh issue close`,
-`gh issue comment`, `gh pr merge`, or `gh api` with write methods.
-```
+`metadata.analyzerDomain` drives prompt wording in `src/services/assistants/runtime-rendering.ts`.
+Current values are `'discussions'`, `'issues'`, and `'pr-reviews'`.
 
-#### Operational Guardrails
-```
-Do not run npm install or repair Forge dependencies.
-```
-
-#### Scope Redirection
-Each plugin must redirect out-of-scope requests. If an issue analyzer gets a discussion question, it should say so and stop.
-
-### metadata.analyzerDomain
-
-The `analyzerDomain` metadata field drives the rendering system's prompt context. Current values: `'discussions'` | `'issues'`. When adding a new domain, extend `getAnalyzerPromptContext()` in `runtime-rendering.ts`.
-
-## Adapter System
-
-### AssistantAdapter Interface
-
-**File:** `src/services/assistants/registry.ts`
-
-```typescript
-interface AssistantAdapter {
-  id: AssistantId;                      // 'claude' | 'copilot' | 'codex' | 'gemini'
-  name: string;
-  description: string;
-  checkAvailability(): Promise<AssistantAvailability>;
-  getInstallTarget(cwd, entry): string;
-  resolveInstallLayout(cwd): AssistantInstallLayout;
-  render(entry): string;                // Primary asset content
-  getSupplementalAssets?(cwd, entry): AssistantSupplementalAsset[];
-  getAssetMigrationSources?(cwd, entry): Record<string, string[]>;
-  getObsoleteAssetPaths?(cwd, entry): string[];
-  getObsoleteDirectoryPaths?(cwd): string[];
-}
-```
-
-### Per-Assistant Install Layout
+## Assistant Layouts
 
 | Assistant | Root | Primary Asset | Supplemental Assets |
 |-----------|------|---------------|---------------------|
@@ -130,172 +82,78 @@ interface AssistantAdapter {
 | Gemini | `~/.gemini` | `commands/{namespace}/{local}.toml` | `agents/{id}.md`, `forge/workflows/{local}.md` |
 | Codex | `~/.codex` | `skills/{id}/SKILL.md` | `agents/{id}.md`, `agents/{id}.toml`, `forge/workflows/{local}.md` |
 
-All assistants share a runtime at `~/.{assistant}/forge/` containing `bin/forge.mjs`, `dist/`, `node_modules/`, `VERSION`, and `forge-file-manifest.json`.
+Only workflow reference files remain under `~/.{assistant}/forge/`. The old executable runtime is intentionally gone.
 
-### Per-Assistant Rendering Formats
+## Rendering System
 
 **File:** `src/services/assistants/runtime-rendering.ts`
 
-Each adapter calls a dedicated render function:
+Key renderers:
 
-| Function | Assistant | Format | Notes |
-|----------|-----------|--------|-------|
-| `renderClaudeCommand` | Claude | Markdown + YAML frontmatter | `allowed-tools: Read, Bash`. XML `<objective>/<context>/<process>` blocks. References workflow via `@path`. |
-| `renderClaudeAgent` | Claude | Managed Markdown | Wraps `renderAnalyzerAgentPrompt()` with `<role>/<instructions>` XML blocks. |
-| `renderClaudeWorkflow` | Claude | Markdown | Execution rules. Shared by Codex and Gemini workflows. |
-| `renderCopilotAgent` | Copilot | Markdown | Uses `EntryRenderer.renderToMarkdown()`. Tools: `bash`, `view`. |
-| `renderGeminiCommand` | Gemini | TOML | `description` + `prompt` fields. XML `<objective>/<context>/<process>` blocks. |
-| `renderGeminiAgent` | Gemini | Managed Markdown | Tools: `read_file`, `run_shell_command`. |
-| `renderCodexSkill` | Codex | Managed Markdown + XML | `<codex_skill_adapter>` wrapper. References workflow via `@path`. |
-| `renderCodexAgent` | Codex | Managed Markdown | Role/tools/purpose metadata. |
-| `renderCodexAgentToml` | Codex | TOML | `sandbox_mode = "workspace-write"`. `developer_instructions` block. |
+- `renderClaudeCommand`
+- `renderClaudeAgent`
+- `renderClaudeWorkflow`
+- `renderGeminiCommand`
+- `renderGeminiAgent`
+- `renderGeminiWorkflow`
+- `renderCodexSkill`
+- `renderCodexAgent`
+- `renderCodexAgentToml`
 
-### Domain-Aware Prompt Context
+The shared renderer logic does two things:
 
-`getAnalyzerPromptContext(entry)` returns domain-specific strings used across all renderers:
-
-```typescript
-{
-  analyzerDescription: string;    // "Analyze GitHub Discussions for..."
-  workflowTitle: string;          // "Forge Discussion Analyzer Workflow"
-  roleName: string;               // "Forge Discussion Analyzer"
-  subjectPlural: string;          // "Discussions" or "Issues"
-  subjectSingularLower: string;   // "discussion" or "issue"
-  counterpartPlural: string;      // "Issues" or "Discussions"
-  narrowingHint: string;          // "category, relative windows, ..." or "label, state, ..."
-}
-```
-
-## Registration
-
-**File:** `src/services/assistants/registry.ts`
-
-All adapters are registered at module load:
-
-```typescript
-export const assistantRegistry = new AssistantRegistry();
-assistantRegistry.register(claudeAdapter);
-assistantRegistry.register(codexAdapter);
-assistantRegistry.register(copilotAdapter);
-assistantRegistry.register(geminiAdapter);
-```
-
-All entries from `forgePlugins` (in `summonables.ts`) are installed for every registered adapter.
+1. Builds domain-aware prompt copy.
+2. Injects the correct read-only `gh` guidance for discussions, issues, or PR reviews.
 
 ## Installation Flow
 
 **File:** `src/services/assistants/install.ts`
 
-```
+```text
 installAssistantsCommand(cwd)
-  → for each requested assistant adapter:
-      → checkAvailability()
-      → prepareRuntime()
-          → create directory tree
-          → copy dist/ and node_modules/
-          → write forge.mjs entry wrapper
-          → write VERSION, package.json
-          → write forge-file-manifest.json
-      → for each ForgePlugin:
-          → adapter.render(entry) → primary asset
-          → adapter.getSupplementalAssets() → agents, workflows, skills
-          → mergeManagedContent(rendered, existing)
-              → preserve user customizations outside managed markers
-              → migrate legacy format if needed
-          → write to disk
-          → clean up obsolete files
+  → resolve assistant selection
+  → for each requested assistant:
+      → resolve install layout
+      → create missing asset directories
+      → remove legacy bundled runtime artifacts
+      → render primary + supplemental assets
+      → merge Forge-managed content with preserved user customizations
+      → remove obsolete legacy files
 ```
 
-### Content Merging Strategy
+### Managed Content Rules
 
-Three scenarios when writing an asset to disk:
+When writing an asset:
 
-1. **No existing file:** Write rendered content as-is.
-2. **Existing file with managed markers:** Replace only the managed block; preserve user customizations.
-3. **Legacy file (no markers):** Migrate to new format — extract user content, wrap with markers, prepend frontmatter.
+1. New file: write rendered content.
+2. Existing managed file: replace only the managed block.
+3. Legacy file: migrate the content into the managed/user marker structure.
 
-## Runtime Execution Flow
+## CLI Surface
 
 **File:** `src/program.ts`
 
-```
-forge --run forge-discussion-analyzer --question "what themes emerged last week?"
-  │
-  ├── parseAnalyzerId(requestedAnalyzer) → validate ID
-  ├── Build shared options: cwd, question, token, when, after, before, limit
-  │
-  ├── if discussion-analyzer:
-  │     runDiscussionAnalyzer(options)
-  │       ├── analyzeRequestIntent(question) → intent (scope, filters, answer shape)
-  │       ├── runDiscussionFetch(options, intent) → raw GraphQL records
-  │       ├── buildPreparedDigest(fetched) → classified, extracted records
-  │       ├── renderAnswer(digest, intent) → markdown
-  │       └── persistSummary() → .forge/discussions/summary/
-  │
-  └── if issue-analyzer:
-        runIssueAnalyzer(options) → same pipeline, REST API, label/state filters
-```
+The public `forge` command is installer-only:
 
-### CLI Options
+- `--assistants <targets>`
+- `--verbose`
+- `--cwd <path>`
 
-| Option | Description |
-|--------|-------------|
-| `--run <id>` | Analyzer ID to run |
-| `--question <text>` | Natural language query |
-| `--when <window>` | today, yesterday, last-week |
-| `--after <date>` | ISO date filter start |
-| `--before <date>` | ISO date filter end |
-| `--category <name>` | Discussion category filter |
-| `--label <name>` | Issue label filter |
-| `--issue-state <state>` | open, closed, all |
-| `--discussion-limit <n>` | Max records (1-5000, default 500) |
-| `--github-token <token>` | Explicit GitHub token |
+There is no analyzer execution subcommand anymore.
 
-### Analysis Pipeline Components
+## Verification
 
-Each analyzer domain (`discussions`, `issues`) has four components in `src/services/{domain}/`:
+When changing the install architecture:
 
-| Component | File | Purpose |
-|-----------|------|---------|
-| **Intent** | `request-intent.ts` | Parse question → scope, filters, temporal field, answer shape |
-| **Fetch** | `fetch.ts` | GitHub API calls (GraphQL for discussions, REST for issues) |
-| **Prepare** | `prepare.ts` | Classify records (kind, status), extract summaries, action items |
-| **Analyze** | `analyze.ts` | Orchestrate pipeline, render markdown answer, persist artifacts |
-
-### Output Artifacts
-
-```
-.forge/
-  {domain}/
-    summary/
-      latest.json          # Latest summary metadata
-      latest.md            # Latest answer markdown
-      runs/
-        {runId}/
-          summary.json     # Full summary artifact
-          question.txt     # Original question
-          answer.md        # Rendered answer
+```bash
+npm run build
+npm test
+node dist/cli.js --assistants codex
 ```
 
-## Checklist: Adding a New Plugin
+Check that:
 
-See `docs/adding-skill-agent-template.md` for the step-by-step template. Key requirements:
-
-1. Define a `ForgePlugin` in `summonables.ts` following the instructions contract above (tool approval, read-only enforcement, fallback scoping, guardrails, scope redirection).
-2. Add it to `forgePlugins`.
-3. If the domain is new (not discussions/issues), extend `getAnalyzerDomain()` and `getAnalyzerPromptContext()` in `runtime-rendering.ts`.
-4. Implement the backend in `src/services/{domain}/` (intent, fetch, prepare, analyze).
-5. Wire the `--run` dispatch in `program.ts`.
-6. Verify all four adapters produce correct assets (`npm run build && npm test`).
-7. Run `node dist/cli.js --run {id} --question "test"` to verify end-to-end.
-
-## Security Model
-
-Forge's security is **procedural, not technical**. There is no code-level sandboxing.
-
-- **Forge backend:** Only issues read-only GitHub API calls (GraphQL queries, REST GET). No mutation endpoints.
-- **Host assistant instructions:** Explicitly tell the assistant that the plugin is read-only and enumerate banned mutation commands.
-- **`gh` CLI fallback:** Scoped to read commands (`gh issue list`, `gh issue view`, etc.). Mutation commands (`gh issue create`, `gh pr merge`, `gh api --method POST`) are explicitly banned in instructions.
-- **Tool approvals:** Instructions tell the assistant to approve all read-only tool executions in the analysis pipeline up front, avoiding repeated prompts.
-
-This model depends on the host assistant (Claude, Copilot, Gemini, Codex) respecting the instructions. The instructions are designed to be explicit and unambiguous to minimize misinterpretation.
+- assets mention direct `gh` usage
+- no asset references `forge.mjs` or `--run`
+- legacy bundled runtime files are removed on reinstall
+- user customization blocks stay intact

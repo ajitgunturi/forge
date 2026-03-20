@@ -17,7 +17,7 @@ const INTERACTIVE_CHOICES: Array<{
   { choice: '2', label: 'Claude Code', pathLabel: '~/.claude', assistants: ['claude'] },
   { choice: '3', label: 'Gemini', pathLabel: '~/.gemini', assistants: ['gemini'] },
   { choice: '4', label: 'Codex', pathLabel: '~/.codex', assistants: ['codex'] },
-  { choice: '5', label: 'All', pathLabel: 'install every supported runtime', assistants: DEFAULT_ASSISTANTS },
+  { choice: '5', label: 'All', pathLabel: 'install every supported assistant', assistants: DEFAULT_ASSISTANTS },
 ];
 
 type InstallStyling = {
@@ -114,7 +114,7 @@ function printInstallTargets(
   }
 
   if (assistantIds.includes('copilot')) {
-    console.log(`Installing Forge Copilot runtime to ${os.homedir()}/.copilot...`);
+    console.log(`Installing Forge Copilot assets to ${os.homedir()}/.copilot...`);
   }
 
   if (assistantIds.includes('claude')) {
@@ -187,9 +187,9 @@ export function renderInteractiveInstallerScreen(version: string, styling: Insta
     ...bannerLines,
     '',
     `  ${styling.bold(`Forge v${version}`)}`,
-    `  ${styling.dim('Live-fetch GitHub Discussions and Issues installer for GitHub Copilot, Claude Code, Gemini, and Codex.')}`,
+    `  ${styling.dim('Read-only GitHub analysis asset installer for GitHub Copilot, Claude Code, Gemini, and Codex.')}`,
     '',
-    `  ${styling.bold('Which runtime(s) would you like to install for?')}`,
+    `  ${styling.bold('Which assistant(s) would you like to install for?')}`,
     '',
     ...runtimeLines,
     '',
@@ -247,12 +247,12 @@ export function buildInteractiveOperationLines(result: AssistantOperationResult)
 
   const lines = [...getInteractiveAssetLines(result.id)];
 
-  if (result.details?.some((detail) => detail.includes('wrote VERSION'))) {
-    lines.push('Wrote VERSION');
+  if (result.details?.some((detail) => detail.includes('removed legacy runtime'))) {
+    lines.push('Removed legacy runtime');
   }
 
-  if (result.details?.some((detail) => detail.includes('manifest'))) {
-    lines.push('Wrote file manifest');
+  if (result.details?.some((detail) => detail.includes('removed obsolete agent'))) {
+    lines.push('Removed legacy agent');
   }
 
   return lines;
@@ -306,13 +306,13 @@ function getInstallRootLabel(assistantId: AssistantId): string {
 function getInteractiveAssetLines(assistantId: AssistantId): string[] {
   switch (assistantId) {
     case 'copilot':
-      return ['Installed agent', 'Installed skill', 'Installed Forge runtime'];
+      return ['Installed agent', 'Installed skill'];
     case 'claude':
-      return ['Installed command', 'Installed agent', 'Installed Forge runtime'];
+      return ['Installed command', 'Installed agent', 'Installed workflow'];
     case 'codex':
-      return ['Installed skill', 'Installed agents', 'Installed Forge runtime'];
+      return ['Installed skill', 'Installed agents', 'Installed workflow'];
     case 'gemini':
-      return ['Installed command', 'Installed agent', 'Installed Forge runtime'];
+      return ['Installed command', 'Installed agent', 'Installed workflow'];
   }
 }
 

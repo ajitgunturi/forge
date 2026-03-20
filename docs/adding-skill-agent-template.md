@@ -1,40 +1,40 @@
 # Template: Add a New Skill/Agent Across Systems
 
-Use this template when adding a new Forge plugin capability that should install into all assistant runtimes (Copilot, Claude, Codex, Gemini).
+Use this checklist when adding a new Forge plugin capability that should install into Copilot, Claude, Codex, and Gemini.
 
 ## 1) Define Inputs
 
 Fill these before editing code:
 
-- `ENTRY_ID`: stable kebab-case id, ex: `forge-release-risk-analyzer`
-- `DISPLAY_NAME`: ex: `Forge Release Risk Analyzer`
+- `ENTRY_ID`: stable kebab-case id, for example `forge-release-risk-analyzer`
+- `DISPLAY_NAME`: human-readable name
 - `PURPOSE`: one-sentence scope
-- `QUESTION_HINT`: what user question this plugin expects
-- `RUNTIME_HANDLER`: backend function name, ex: `runReleaseRiskAnalyzer`
-- `RUNTIME_DOMAIN`: service folder, ex: `src/services/release-risk/`
+- `QUESTION_HINT`: example user question
+- `RUNTIME_DOMAIN`: plugin domain, for example `release-risk`
 
 Rules:
 
 - Keep `ENTRY_ID` stable after release.
-- Prefix with `forge-` to preserve namespace behavior (`forge:...`) for Claude/Gemini commands.
+- Prefix with `forge-` so Claude and Gemini still expose the namespaced `forge:...` command form.
 
 ## 2) Add The Plugin Entry
 
-File: `src/services/assistants/plugins.ts`
+**File:** `src/services/assistants/summonables.ts`
 
-1. Add a new `ForgePlugin` constant (copy the existing `forgeDiscussionAnalyzerEntry` shape).
+1. Add a new `ForgePlugin` constant.
 2. Add the new entry to `forgePlugins`.
+3. Make the `instructions`, `commands`, and `principles` describe direct read-only `gh` usage instead of any Forge backend command.
 
-Template snippet:
+Template sketch:
 
 ```ts
-export const ENTRY_CONST: ForgePlugin = {
+export const entryConst: ForgePlugin = {
   id: 'ENTRY_ID',
   displayName: 'DISPLAY_NAME',
   purpose: 'PURPOSE',
   instructions: [
-    'Instruction 1',
-    'Instruction 2',
+    'Use this agent for ...',
+    'Use read-only `gh ...` as the primary data path.',
   ].map((line) => `- ${line}`).join('\n'),
   capabilities: [
     {
@@ -47,87 +47,56 @@ export const ENTRY_CONST: ForgePlugin = {
     {
       name: '/agent ENTRY_ID',
       description: 'Select this agent and ask a question.',
-      usage: `${COPILOT_RUNTIME_ENTRY} --run ENTRY_ID --question "<your question>"`,
+      usage: 'gh ...',
       examples: [
         '/agent -> select ENTRY_ID -> "QUESTION_HINT"',
       ],
     },
   ],
   principles: [
-    'Principle 1',
+    'Keep the asset compact and use gh as the operational data path.',
   ],
 };
 ```
 
-## 3) Add Runtime Backend Wiring
-
-Files:
-
-- `src/program.ts`
-- `src/services/<domain>/...` (new backend implementation)
-
-Forge currently supports multiple plugins (`forge-discussion-analyzer`, `forge-issue-analyzer`), so new plugins require dispatch changes.
-
-Minimum update:
-
-1. Implement backend runner (`RUNTIME_HANDLER`) for the new plugin.
-2. Extend `--run`/`--run-plugin` dispatch to accept the new `ENTRY_ID`.
-3. Keep unknown analyzer error explicit and list valid ids.
-
-## 4) Render Assistant Assets For The New Entry
+## 3) Render Assistant Assets
 
 Files:
 
 - `src/services/assistants/runtime-rendering.ts`
-- `src/services/assistants/render-entry.ts` (if shared markdown helpers need extension)
+- `src/services/assistants/render-entry.ts` if shared markdown helpers need extension
 
 Required behavior:
 
-- Generated command/agent/skill text must execute:
-  - `node "$HOME/.<assistant>/forge/bin/forge.mjs" --run ENTRY_ID --question "..."`
-- Preserve managed/user customization markers:
+- Discussions should describe read-only `gh api graphql`.
+- Issues should describe read-only `gh issue list` / `gh issue view`.
+- PR review comment analyzers should describe read-only `gh pr view` / `gh pr list`, plus read-only `gh api .../pulls/<pr>/comments` when needed.
+- Preserve the managed and user-customization markers:
   - `<!-- BEGIN FORGE MANAGED BLOCK -->`
   - `<!-- END FORGE MANAGED BLOCK -->`
   - `<!-- BEGIN USER CUSTOMIZATIONS -->`
   - `<!-- END USER CUSTOMIZATIONS -->`
 
-If prompt copy is analyzer-specific, add a dedicated renderer for the new plugin or parameterize existing helpers by `entry.id`.
+If the prompt copy is domain-specific, extend `getAnalyzerPromptContext()` and `getAnalyzerExecutionGuidance()`.
 
-## 5) Confirm Per-Assistant Surface Mapping
+## 4) Confirm Per-Assistant Surface Mapping
 
-No new adapter is needed for this task. Existing adapters install all entries from `forgePlugins`.
+Existing adapters install all entries from `forgePlugins`.
 
-Verify each adapter still produces correct assets for `ENTRY_ID`:
+Verify:
 
-- Copilot (`src/services/assistants/copilot.ts`)
-  - Primary: `~/.copilot/agents/ENTRY_ID.agent.md`
-  - Supplemental: `~/.copilot/skills/ENTRY_ID/SKILL.md`
-- Claude (`src/services/assistants/claude.ts`)
-  - Primary command: `~/.claude/commands/<namespace>/<local>.md`
-  - Supplemental: `~/.claude/agents/ENTRY_ID.md`
-  - Supplemental: `~/.claude/forge/workflows/<local>.md`
-- Codex (`src/services/assistants/codex.ts`)
-  - Primary skill: `~/.codex/skills/ENTRY_ID/SKILL.md`
-  - Supplemental: `~/.codex/agents/ENTRY_ID.md`
-  - Supplemental: `~/.codex/agents/ENTRY_ID.toml`
-  - Supplemental: `~/.codex/forge/workflows/<local>.md`
-- Gemini (`src/services/assistants/gemini.ts`)
-  - Primary command: `~/.gemini/commands/<namespace>/<local>.toml`
-  - Supplemental: `~/.gemini/agents/ENTRY_ID.md`
-  - Supplemental: `~/.gemini/forge/workflows/<local>.md`
+- Copilot: `~/.copilot/agents/ENTRY_ID.agent.md`, `~/.copilot/skills/ENTRY_ID/SKILL.md`
+- Claude: `~/.claude/commands/<namespace>/<local>.md`, `~/.claude/agents/ENTRY_ID.md`, `~/.claude/forge/workflows/<local>.md`
+- Codex: `~/.codex/skills/ENTRY_ID/SKILL.md`, `~/.codex/agents/ENTRY_ID.md`, `~/.codex/agents/ENTRY_ID.toml`, `~/.codex/forge/workflows/<local>.md`
+- Gemini: `~/.gemini/commands/<namespace>/<local>.toml`, `~/.gemini/agents/ENTRY_ID.md`, `~/.gemini/forge/workflows/<local>.md`
 
-Notes:
+## 5) Update Installer UX Copy
 
-- `<namespace>/<local>` comes from first `-` split in `ENTRY_ID` via `getPluginRoute`.
-- Claude/Gemini command names are namespaced (`forge:local-name`) via `getExposedPluginName`.
+**File:** `src/commands/install-assistants.ts`
 
-## 6) Update Installer UX Copy
+If success text or installer prompts assume only the current analyzers, update them to include the new plugin or keep the copy generic.
 
-File: `src/commands/install-assistants.ts`
-
-If success text references only `forgeDiscussionAnalyzerEntry`, update it to include the new plugin (or make it generic for multi-entry installs).
-
-## 7) Add/Update Tests
+## 6) Add Or Update Tests
 
 At minimum update:
 
@@ -136,42 +105,37 @@ At minimum update:
 - `tests/unit/services/codex-gemini-assistants.test.ts`
 - `tests/smoke/cli.test.ts`
 
-If runtime dispatch changes, add/adjust tests around `src/program.ts` behavior and backend execution.
-
-Test expectations to preserve:
+Preserve these expectations:
 
 - Correct install paths per assistant
-- New content references `--run ENTRY_ID`
+- Installed content references the correct direct `gh` data path
+- No installed content references `forge.mjs` or `--run`
 - Reinstall preserves user customization blocks
-- Legacy migration behavior (if old paths are introduced)
+- Reinstall removes legacy bundled runtime artifacts
 
-## 8) Update Docs
+## 7) Update Docs
 
 At minimum update:
 
-- `README.md` (usage + installed file list)
-- `docs/releasing.md` (release validation checks)
+- `README.md`
+- `docs/releasing.md`
+- `docs/plugin-architecture.md`
 
-## 9) Verify End-To-End
+## 8) Verify End-To-End
 
 Run:
 
 ```bash
 npm run build
 npm test
-```
-
-Optional manual spot checks:
-
-```bash
 node dist/cli.js --assistants codex
-node dist/cli.js --run ENTRY_ID --question "QUESTION_HINT"
 ```
 
 ## Done Criteria
 
 - New plugin appears in `forgePlugins`.
 - All four assistant systems install valid assets for the new id.
-- Runtime `--run ENTRY_ID` executes the correct backend.
-- Managed/user customization markers remain intact after reinstall.
-- Unit + smoke tests pass.
+- Installed assets explain the correct read-only `gh` path for the new plugin.
+- Managed and user customization markers remain intact after reinstall.
+- Legacy bundled runtime files are still cleaned up on reinstall.
+- Unit and smoke tests pass.

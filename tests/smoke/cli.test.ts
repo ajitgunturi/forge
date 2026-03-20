@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, beforeEach } from 'vitest';
 import { execa } from 'execa';
-import { mkdtemp, mkdir, rm, writeFile, stat, readFile } from 'fs/promises';
+import { mkdtemp, mkdir, rm, stat, readFile, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
 
@@ -41,9 +41,9 @@ describe('CLI Smoke Tests - Installer Flow', () => {
     });
   };
 
-  const fileExists = async (path: string) => {
+  const fileExists = async (targetPath: string) => {
     try {
-      await stat(path);
+      await stat(targetPath);
       return true;
     } catch {
       return false;
@@ -77,7 +77,7 @@ describe('CLI Smoke Tests - Installer Flow', () => {
   };
 
   describe('default installer', () => {
-    it('installs all runtime assets in the expected global locations', async () => {
+    it('installs all assistant assets in the expected global locations without a bundled runtime', async () => {
       const { exitCode, stdout } = await runCLI([]);
       const copilotRoot = join(tempHomePath, '.copilot');
       const claudeRoot = join(tempHomePath, '.claude');
@@ -85,7 +85,7 @@ describe('CLI Smoke Tests - Installer Flow', () => {
       const geminiRoot = join(tempHomePath, '.gemini');
 
       expect(exitCode).toBe(0);
-      expect(stdout).toContain(`Installing Forge Copilot runtime to ${copilotRoot}`);
+      expect(stdout).toContain(`Installing Forge Copilot assets to ${copilotRoot}`);
       expect(stdout).toContain(`Installing Forge Claude assets to ${claudeRoot}`);
       expect(stdout).toContain(`Installing Forge Codex assets to ${codexRoot}`);
       expect(stdout).toContain(`Installing Forge Gemini assets to ${geminiRoot}`);
@@ -98,76 +98,67 @@ describe('CLI Smoke Tests - Installer Flow', () => {
       expect(await fileExists(join(copilotRoot, 'skills/forge-discussion-analyzer/SKILL.md'))).toBe(true);
       expect(await fileExists(join(copilotRoot, 'agents/forge-issue-analyzer.agent.md'))).toBe(true);
       expect(await fileExists(join(copilotRoot, 'skills/forge-issue-analyzer/SKILL.md'))).toBe(true);
+      expect(await fileExists(join(copilotRoot, 'agents/forge-pr-comments-analyzer.agent.md'))).toBe(true);
+      expect(await fileExists(join(copilotRoot, 'skills/forge-pr-comments-analyzer/SKILL.md'))).toBe(true);
 
       expect(await fileExists(join(claudeRoot, 'commands/forge/discussion-analyzer.md'))).toBe(true);
       expect(await fileExists(join(claudeRoot, 'agents/forge-discussion-analyzer.md'))).toBe(true);
       expect(await fileExists(join(claudeRoot, 'forge/workflows/discussion-analyzer.md'))).toBe(true);
       expect(await fileExists(join(claudeRoot, 'commands/forge/issue-analyzer.md'))).toBe(true);
-      expect(await fileExists(join(claudeRoot, 'agents/forge-issue-analyzer.md'))).toBe(true);
-      expect(await fileExists(join(claudeRoot, 'forge/workflows/issue-analyzer.md'))).toBe(true);
-      expect(await fileExists(join(claudeRoot, 'skills/forge:discussion-analyzer/SKILL.md'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'commands/forge/pr-comments-analyzer.md'))).toBe(true);
+      expect(await fileExists(join(claudeRoot, 'agents/forge-pr-comments-analyzer.md'))).toBe(true);
 
       expect(await fileExists(join(codexRoot, 'skills/forge-discussion-analyzer/SKILL.md'))).toBe(true);
       expect(await fileExists(join(codexRoot, 'agents/forge-discussion-analyzer.md'))).toBe(true);
       expect(await fileExists(join(codexRoot, 'agents/forge-discussion-analyzer.toml'))).toBe(true);
       expect(await fileExists(join(codexRoot, 'forge/workflows/discussion-analyzer.md'))).toBe(true);
-      expect(await fileExists(join(codexRoot, 'skills/forge-issue-analyzer/SKILL.md'))).toBe(true);
-      expect(await fileExists(join(codexRoot, 'agents/forge-issue-analyzer.md'))).toBe(true);
-      expect(await fileExists(join(codexRoot, 'agents/forge-issue-analyzer.toml'))).toBe(true);
-      expect(await fileExists(join(codexRoot, 'forge/workflows/issue-analyzer.md'))).toBe(true);
-      expect(await fileExists(join(codexRoot, 'forge:discussion-analyzer.md'))).toBe(false);
+      expect(await fileExists(join(codexRoot, 'skills/forge-pr-comments-analyzer/SKILL.md'))).toBe(true);
+      expect(await fileExists(join(codexRoot, 'agents/forge-pr-comments-analyzer.toml'))).toBe(true);
 
       expect(await fileExists(join(geminiRoot, 'commands/forge/discussion-analyzer.toml'))).toBe(true);
       expect(await fileExists(join(geminiRoot, 'agents/forge-discussion-analyzer.md'))).toBe(true);
       expect(await fileExists(join(geminiRoot, 'forge/workflows/discussion-analyzer.md'))).toBe(true);
       expect(await fileExists(join(geminiRoot, 'commands/forge/issue-analyzer.toml'))).toBe(true);
-      expect(await fileExists(join(geminiRoot, 'agents/forge-issue-analyzer.md'))).toBe(true);
-      expect(await fileExists(join(geminiRoot, 'forge/workflows/issue-analyzer.md'))).toBe(true);
-      expect(await fileExists(join(geminiRoot, 'forge:discussion-analyzer.md'))).toBe(false);
+      expect(await fileExists(join(geminiRoot, 'commands/forge/pr-comments-analyzer.toml'))).toBe(true);
+      expect(await fileExists(join(geminiRoot, 'agents/forge-pr-comments-analyzer.md'))).toBe(true);
 
-      expect(await fileExists(join(copilotRoot, 'forge/bin/forge.mjs'))).toBe(true);
-      expect(await fileExists(join(claudeRoot, 'forge/bin/forge.mjs'))).toBe(true);
-      expect(await fileExists(join(codexRoot, 'forge/bin/forge.mjs'))).toBe(true);
-      expect(await fileExists(join(geminiRoot, 'forge/bin/forge.mjs'))).toBe(true);
+      expect(await fileExists(join(copilotRoot, 'forge/bin/forge.mjs'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'forge/bin/forge.mjs'))).toBe(false);
+      expect(await fileExists(join(codexRoot, 'forge/bin/forge.mjs'))).toBe(false);
+      expect(await fileExists(join(geminiRoot, 'forge/bin/forge.mjs'))).toBe(false);
 
-      expect(await fileExists(join(tempRepoPath, '.codex/forge:discussion-analyzer.md'))).toBe(false);
-      expect(await fileExists(join(tempRepoPath, '.gemini/forge:discussion-analyzer.md'))).toBe(false);
       expect(await fileExists(join(tempRepoPath, '.codex'))).toBe(false);
       expect(await fileExists(join(tempRepoPath, '.gemini'))).toBe(false);
       expect(await fileExists(join(tempHomePath, '.config/gh'))).toBe(false);
     }, 20000);
 
-    it('installs content that points each runtime at its own bundled backend', async () => {
+    it('installs content that points each assistant at direct gh workflows', async () => {
       await runCLI([]);
 
       const copilotAgent = await readFile(join(tempHomePath, '.copilot/agents/forge-discussion-analyzer.agent.md'), 'utf8');
-      const claudeCommand = await readFile(join(tempHomePath, '.claude/commands/forge/discussion-analyzer.md'), 'utf8');
-      const claudeAgent = await readFile(join(tempHomePath, '.claude/agents/forge-discussion-analyzer.md'), 'utf8');
-      const codexSkill = await readFile(join(tempHomePath, '.codex/skills/forge-discussion-analyzer/SKILL.md'), 'utf8');
+      const claudeCommand = await readFile(join(tempHomePath, '.claude/commands/forge/issue-analyzer.md'), 'utf8');
+      const codexSkill = await readFile(join(tempHomePath, '.codex/skills/forge-pr-comments-analyzer/SKILL.md'), 'utf8');
       const codexAgentToml = await readFile(join(tempHomePath, '.codex/agents/forge-discussion-analyzer.toml'), 'utf8');
       const geminiCommand = await readFile(join(tempHomePath, '.gemini/commands/forge/discussion-analyzer.toml'), 'utf8');
-      const issueCopilotAgent = await readFile(join(tempHomePath, '.copilot/agents/forge-issue-analyzer.agent.md'), 'utf8');
-      const issueClaudeCommand = await readFile(join(tempHomePath, '.claude/commands/forge/issue-analyzer.md'), 'utf8');
-      const issueCodexSkill = await readFile(join(tempHomePath, '.codex/skills/forge-issue-analyzer/SKILL.md'), 'utf8');
-      const issueCodexAgentToml = await readFile(join(tempHomePath, '.codex/agents/forge-issue-analyzer.toml'), 'utf8');
-      const issueGeminiCommand = await readFile(join(tempHomePath, '.gemini/commands/forge/issue-analyzer.toml'), 'utf8');
 
-      expect(copilotAgent).toContain('node "$HOME/.copilot/forge/bin/forge.mjs" --run forge-discussion-analyzer --question');
-      expect(claudeCommand).toContain('---\nname: forge:discussion-analyzer');
-      expect(claudeCommand).toContain(`@${join(tempHomePath, '.claude/forge/workflows/discussion-analyzer.md')}`);
-      expect(claudeAgent).toContain('node "$HOME/.claude/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "<question>"');
-      expect(codexSkill).toContain('`$forge-discussion-analyzer`');
-      expect(codexSkill).toContain(`@${join(tempHomePath, '.codex/forge/workflows/discussion-analyzer.md')}`);
-      expect(codexAgentToml).toContain('node "$HOME/.codex/forge/bin/forge.mjs" --run forge-discussion-analyzer --question "<question>"');
-      expect(geminiCommand).toContain('Forge backend: node \\"$HOME/.gemini/forge/bin/forge.mjs\\" --run forge-discussion-analyzer --question \\"<question>\\"');
-      expect(geminiCommand).toContain('Do not inspect the codebase, search the repository, or read files under ~/.gemini before deciding what to do.');
-      expect(issueCopilotAgent).toContain('node "$HOME/.copilot/forge/bin/forge.mjs" --run forge-issue-analyzer --question');
-      expect(issueClaudeCommand).toContain('---\nname: forge:issue-analyzer');
-      expect(issueClaudeCommand).toContain(`@${join(tempHomePath, '.claude/forge/workflows/issue-analyzer.md')}`);
-      expect(issueCodexSkill).toContain('`$forge-issue-analyzer`');
-      expect(issueCodexSkill).toContain(`@${join(tempHomePath, '.codex/forge/workflows/issue-analyzer.md')}`);
-      expect(issueCodexAgentToml).toContain('node "$HOME/.codex/forge/bin/forge.mjs" --run forge-issue-analyzer --question "<question>"');
-      expect(issueGeminiCommand).toContain('Forge backend: node \\"$HOME/.gemini/forge/bin/forge.mjs\\" --run forge-issue-analyzer --question \\"<question>\\"');
+      expect(copilotAgent).toContain('gh api graphql');
+      expect(copilotAgent).not.toContain('forge.mjs');
+      expect(copilotAgent).not.toContain('--run');
+
+      expect(claudeCommand).toContain('gh issue list');
+      expect(claudeCommand).not.toContain('forge.mjs');
+      expect(claudeCommand).not.toContain('--run');
+
+      expect(codexSkill).toContain('gh pr view');
+      expect(codexSkill).not.toContain('forge.mjs');
+      expect(codexSkill).not.toContain('--run');
+
+      expect(codexAgentToml).toContain('gh api graphql');
+      expect(codexAgentToml).not.toContain('forge.mjs');
+
+      expect(geminiCommand).toContain('gh api graphql');
+      expect(geminiCommand).not.toContain('forge.mjs');
+      expect(geminiCommand).not.toContain('--run');
     });
 
     it('preserves user customizations for managed markdown assets on reinstall', async () => {
@@ -218,73 +209,39 @@ describe('CLI Smoke Tests - Installer Flow', () => {
       expect(await readFile(geminiAgentPath, 'utf8')).toContain('Team custom Gemini agent instruction');
     }, 20000);
 
-    it('writes installer metadata for every runtime bundle', async () => {
-      await runCLI([]);
+    it('removes legacy runtime artifacts on reinstall while preserving workflows', async () => {
+      const copilotRoot = join(tempHomePath, '.copilot');
+      const claudeRoot = join(tempHomePath, '.claude');
+      const codexRoot = join(tempHomePath, '.codex');
+      const geminiRoot = join(tempHomePath, '.gemini');
 
-      const claudeManifest = JSON.parse(
-        await readFile(join(tempHomePath, '.claude/forge/forge-file-manifest.json'), 'utf8'),
-      ) as {
-        installRoot: string;
-        runtimePath: string;
-        runtimeEntryPath: string;
-        agentsPath: string;
-        commandsPath?: string;
-        workflowsPath?: string;
-        bundledFiles: string[];
-      };
-      const codexManifest = JSON.parse(
-        await readFile(join(tempHomePath, '.codex/forge/forge-file-manifest.json'), 'utf8'),
-      ) as {
-        skillsPath?: string;
-        workflowsPath?: string;
-      };
-      const geminiManifest = JSON.parse(
-        await readFile(join(tempHomePath, '.gemini/forge/forge-file-manifest.json'), 'utf8'),
-      ) as {
-        commandsPath?: string;
-        workflowsPath?: string;
-      };
+      await createLegacyRuntime(copilotRoot);
+      await createLegacyRuntime(claudeRoot);
+      await createLegacyRuntime(codexRoot);
+      await createLegacyRuntime(geminiRoot);
 
-      expect(claudeManifest.installRoot).toBe(join(tempHomePath, '.claude'));
-      expect(claudeManifest.runtimePath).toBe(join(tempHomePath, '.claude/forge'));
-      expect(claudeManifest.runtimeEntryPath).toBe(join(tempHomePath, '.claude/forge/bin/forge.mjs'));
-      expect(claudeManifest.agentsPath).toBe(join(tempHomePath, '.claude/agents'));
-      expect(claudeManifest.commandsPath).toBe(join(tempHomePath, '.claude/commands'));
-      expect(claudeManifest.workflowsPath).toBe(join(tempHomePath, '.claude/forge/workflows'));
-      expect(claudeManifest.bundledFiles).toContain('forge/dist');
-      expect(codexManifest.skillsPath).toBe(join(tempHomePath, '.codex/skills'));
-      expect(codexManifest.workflowsPath).toBe(join(tempHomePath, '.codex/forge/workflows'));
-      expect(geminiManifest.commandsPath).toBe(join(tempHomePath, '.gemini/commands'));
-      expect(geminiManifest.workflowsPath).toBe(join(tempHomePath, '.gemini/forge/workflows'));
-    });
-
-    it('removes the legacy forge-agent file on reinstall', async () => {
-      const legacyAgentPath = join(tempHomePath, '.copilot/agents/forge-agent.agent.md');
-      await mkdir(join(tempHomePath, '.copilot/agents'), { recursive: true });
-      await writeFile(legacyAgentPath, 'legacy agent', 'utf8');
-
-      await runCLI([]);
-
-      expect(await fileExists(legacyAgentPath)).toBe(false);
-    });
-
-    it('runs the installed bundled runtime without extra npm installs', async () => {
-      await runCLI([]);
-
-      const bundledRuntimePath = join(tempHomePath, '.codex/forge/bin/forge.mjs');
-      const { stdout, exitCode } = await execa('node', [bundledRuntimePath, '--help'], {
-        cwd: tempRepoPath,
-        env: {
-          ...process.env,
-          HOME: tempHomePath,
-          FORGE_SKIP_SELF_REFRESH: '1',
-        },
-      });
+      const { exitCode } = await runCLI([]);
 
       expect(exitCode).toBe(0);
-      expect(stdout).toContain('Usage: forge');
-      expect(stdout).toContain('Install Forge assistant assets for Copilot, Claude, Codex, and Gemini');
-    });
+      expect(await fileExists(join(copilotRoot, 'forge/bin/forge.mjs'))).toBe(false);
+      expect(await fileExists(join(copilotRoot, 'forge'))).toBe(false);
+
+      expect(await fileExists(join(claudeRoot, 'forge/bin/forge.mjs'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'forge/dist'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'forge/node_modules'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'forge/VERSION'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'forge/package.json'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'forge/forge-file-manifest.json'))).toBe(false);
+      expect(await fileExists(join(claudeRoot, 'forge/workflows/discussion-analyzer.md'))).toBe(true);
+
+      expect(await fileExists(join(codexRoot, 'forge/bin/forge.mjs'))).toBe(false);
+      expect(await fileExists(join(codexRoot, 'forge/forge-file-manifest.json'))).toBe(false);
+      expect(await fileExists(join(codexRoot, 'forge/workflows/discussion-analyzer.md'))).toBe(true);
+
+      expect(await fileExists(join(geminiRoot, 'forge/bin/forge.mjs'))).toBe(false);
+      expect(await fileExists(join(geminiRoot, 'forge/forge-file-manifest.json'))).toBe(false);
+      expect(await fileExists(join(geminiRoot, 'forge/workflows/discussion-analyzer.md'))).toBe(true);
+    }, 20000);
 
     it('shows installer detail lines only in verbose mode', async () => {
       const defaultRun = await runCLI([]);
@@ -292,15 +249,13 @@ describe('CLI Smoke Tests - Installer Flow', () => {
       tempHomePath = await mkdtemp(join(tmpdir(), 'forge-home-test-'));
       const verboseRun = await runCLI(['--verbose']);
 
-      expect(defaultRun.stdout).not.toContain('installed bundled runtime to');
-      expect(defaultRun.stdout).not.toContain('updated manifest');
-      expect(verboseRun.stdout).toContain('installed bundled runtime to');
-      expect(verboseRun.stdout).toContain('bundled tool entry:');
+      expect(defaultRun.stdout).not.toContain('created ');
+      expect(verboseRun.stdout).toContain('created ');
     }, 20000);
   });
 
   describe('explicit install selection', () => {
-    it('installs only the requested runtime assets', async () => {
+    it('installs only the requested assistant assets', async () => {
       const cases = [
         {
           assistant: 'copilot',
@@ -338,18 +293,16 @@ describe('CLI Smoke Tests - Installer Flow', () => {
   });
 
   describe('help surface', () => {
-    it('presents forge as an install-first CLI without the legacy subcommands', async () => {
+    it('presents forge as an install-only CLI', async () => {
       const { stdout } = await runCLI(['--help']);
 
       expect(stdout).toContain('Usage: forge');
       expect(stdout).toContain('Install Forge assistant assets for Copilot, Claude, Codex, and Gemini');
-      expect(stdout).toContain('--run <analyzer>');
       expect(stdout).toContain('--assistants <targets>');
-      expect(stdout).not.toContain('--yes');
+      expect(stdout).not.toContain('--run <analyzer>');
       expect(stdout).not.toContain('bootstrap');
       expect(stdout).not.toContain('forge analyze');
       expect(stdout).not.toContain('plan');
-      expect(stdout).not.toContain('install-assistants');
       expect(stdout).not.toContain('install-copilot');
     });
   });
@@ -412,13 +365,11 @@ describe('CLI Smoke Tests - Installer Flow', () => {
 
         expect(installRun.exitCode).toBe(0);
         expect(await fileExists(join(packedHomePath, '.copilot/agents/forge-discussion-analyzer.agent.md'))).toBe(true);
-        expect(await fileExists(join(packedHomePath, '.copilot/agents/forge-issue-analyzer.agent.md'))).toBe(true);
         expect(await fileExists(join(packedHomePath, '.claude/commands/forge/discussion-analyzer.md'))).toBe(true);
-        expect(await fileExists(join(packedHomePath, '.claude/commands/forge/issue-analyzer.md'))).toBe(true);
         expect(await fileExists(join(packedHomePath, '.codex/skills/forge-discussion-analyzer/SKILL.md'))).toBe(true);
-        expect(await fileExists(join(packedHomePath, '.codex/skills/forge-issue-analyzer/SKILL.md'))).toBe(true);
         expect(await fileExists(join(packedHomePath, '.gemini/commands/forge/discussion-analyzer.toml'))).toBe(true);
-        expect(await fileExists(join(packedHomePath, '.gemini/commands/forge/issue-analyzer.toml'))).toBe(true);
+        expect(await fileExists(join(packedHomePath, '.copilot/forge/bin/forge.mjs'))).toBe(false);
+        expect(await fileExists(join(packedHomePath, '.claude/forge/bin/forge.mjs'))).toBe(false);
         expect(await fileExists(join(installPath, '.codex'))).toBe(false);
         expect(await fileExists(join(installPath, '.gemini'))).toBe(false);
       } finally {
@@ -429,6 +380,19 @@ describe('CLI Smoke Tests - Installer Flow', () => {
     }, 20000);
   });
 });
+
+async function createLegacyRuntime(rootPath: string): Promise<void> {
+  const forgeRoot = join(rootPath, 'forge');
+  await mkdir(join(forgeRoot, 'bin'), { recursive: true });
+  await mkdir(join(forgeRoot, 'dist'), { recursive: true });
+  await mkdir(join(forgeRoot, 'node_modules/pkg'), { recursive: true });
+  await writeFile(join(forgeRoot, 'bin/forge.mjs'), 'legacy', 'utf8');
+  await writeFile(join(forgeRoot, 'dist/index.js'), 'legacy', 'utf8');
+  await writeFile(join(forgeRoot, 'node_modules/pkg/index.js'), 'legacy', 'utf8');
+  await writeFile(join(forgeRoot, 'VERSION'), '1.0.0\n', 'utf8');
+  await writeFile(join(forgeRoot, 'package.json'), '{}', 'utf8');
+  await writeFile(join(forgeRoot, 'forge-file-manifest.json'), '{}', 'utf8');
+}
 
 async function safeRm(targetPath: string): Promise<void> {
   await rm(targetPath, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });

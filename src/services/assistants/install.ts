@@ -1,15 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { assistantRegistry, AssistantAdapter, AssistantSupplementalAsset } from './registry.js';
 import { AssistantId, AssistantInstallLayout, AssistantOperationResult } from '../../contracts/assistants.js';
 import { ForgePlugin } from '../../contracts/forge-plugin.js';
 import { forgePlugins } from './summonables.js';
-import {
-  createInstallerRuntimeMetadata,
-  readInstallerRuntimeMetadata,
-  writeInstallerRuntimeMetadata,
-} from '../metadata.js';
 import {
   FORGE_MANAGED_END,
   FORGE_MANAGED_START,
@@ -103,7 +97,7 @@ export class AssistantInstallService {
     }
 
     const layout = adapter.resolveInstallLayout(cwd);
-    const bootstrap = await this.prepareRuntime(adapter, layout, entries);
+    const bootstrap = await this.prepareInstallLayout(layout);
 
     let installedCount = 0;
     let updatedCount = 0;
@@ -130,7 +124,7 @@ export class AssistantInstallService {
       await removeDirectoryIfEmpty(directoryPath);
     }
 
-    if (installedCount === 0 && updatedCount === 0) {
+    if (installedCount === 0 && updatedCount === 0 && bootstrap.length === 0) {
       return {
         id: adapter.id,
         status: 'skipped',
@@ -277,15 +271,7 @@ export class AssistantInstallService {
     };
   }
 
-  private async prepareRuntime(
-    adapter: AssistantAdapter,
-    layout: AssistantInstallLayout,
-    entries: ForgePlugin[],
-  ): Promise<string[]> {
-    if (!layout.runtimePath || !layout.runtimeEntryPath || !layout.metadataPath || !layout.versionPath) {
-      return [];
-    }
-
+  private async prepareInstallLayout(layout: AssistantInstallLayout): Promise<string[]> {
     const details: string[] = [];
     const directories = [
       layout.rootPath,
@@ -293,8 +279,6 @@ export class AssistantInstallService {
       layout.commandsPath,
       layout.skillsPath,
       layout.workflowsPath,
-      layout.runtimePath,
-      path.dirname(layout.runtimeEntryPath),
     ].filter((value): value is string => Boolean(value));
 
     for (const dir of directories) {
@@ -305,95 +289,46 @@ export class AssistantInstallService {
         details.push(`created ${dir}`);
       }
     }
-
-    const packageRoot = fileURLToPath(new URL('../../../', import.meta.url));
-    const bundledDistPath = fileURLToPath(new URL('../../../dist', import.meta.url));
-    const runtimeDistPath = path.join(layout.runtimePath, 'dist');
-    const bundledNodeModulesPath = path.join(packageRoot, 'node_modules');
-    const runtimeNodeModulesPath = path.join(layout.runtimePath, 'node_modules');
-    await fs.rm(runtimeDistPath, { recursive: true, force: true });
-    await fs.cp(bundledDistPath, runtimeDistPath, { recursive: true });
-    details.push(`installed bundled runtime to ${runtimeDistPath}`);
-    await fs.rm(runtimeNodeModulesPath, { recursive: true, force: true });
-    await fs.cp(bundledNodeModulesPath, runtimeNodeModulesPath, { recursive: true });
-    details.push(`installed bundled dependencies to ${runtimeNodeModulesPath}`);
-
-    const manifestRaw = await fs.readFile(path.join(packageRoot, 'package.json'), 'utf8');
-    const manifest = JSON.parse(manifestRaw) as {
-      name?: string;
-      version?: string;
-      dependencies?: Record<string, string>;
-    };
-
-    await fs.writeFile(
-      path.join(layout.runtimePath, 'package.json'),
-      JSON.stringify(
-        {
-          name: manifest.name ?? 'forge-ai-assist',
-          version: manifest.version ?? '0.0.0',
-          type: 'module',
-          private: true,
-          dependencies: manifest.dependencies ?? {},
-        },
-        null,
-        2,
-      ),
-      'utf8',
-    );
-
-    const wrapper = [
-      '#!/usr/bin/env node',
-      '',
-      "import '../dist/cli.js';",
-      '',
-    ].join('\n');
-    await fs.writeFile(layout.runtimeEntryPath, wrapper, 'utf8');
-    details.push(`wrote runtime entry ${layout.runtimeEntryPath}`);
-
-    await fs.writeFile(layout.versionPath, `${manifest.version ?? '0.0.0'}\n`, 'utf8');
-    details.push(`wrote VERSION (${manifest.version ?? '0.0.0'})`);
+    details.push(...await this.removeLegacyRuntimeArtifacts(layout));
 
     for (const legacyAgentId of LEGACY_COPILOT_AGENT_IDS) {
       const legacyAgentPath = path.join(layout.agentsPath, `${legacyAgentId}.agent.md`);
       try {
+        await fs.access(legacyAgentPath);
         await fs.rm(legacyAgentPath, { force: true });
         details.push(`removed obsolete agent ${legacyAgentPath}`);
       } catch {
         // Ignore cleanup failures so the runtime install can still succeed.
       }
     }
+    return details;
+  }
 
-    const existingMetadata = await readInstallerRuntimeMetadata(layout.metadataPath);
-    const bundledFiles = [
-      path.relative(layout.rootPath, runtimeDistPath),
-      path.relative(layout.rootPath, runtimeNodeModulesPath),
-      path.relative(layout.rootPath, layout.runtimeEntryPath),
-      path.relative(layout.rootPath, layout.versionPath),
-      path.relative(layout.rootPath, path.join(layout.runtimePath, 'package.json')),
+  private async removeLegacyRuntimeArtifacts(layout: AssistantInstallLayout): Promise<string[]> {
+    const legacyRuntimeRoot = path.join(layout.rootPath, 'forge');
+    const obsoletePaths = [
+      path.join(legacyRuntimeRoot, 'bin'),
+      path.join(legacyRuntimeRoot, 'dist'),
+      path.join(legacyRuntimeRoot, 'node_modules'),
+      path.join(legacyRuntimeRoot, 'VERSION'),
+      path.join(legacyRuntimeRoot, 'package.json'),
+      path.join(legacyRuntimeRoot, 'forge-file-manifest.json'),
     ];
+    const details: string[] = [];
 
-    await writeInstallerRuntimeMetadata(
-      layout.metadataPath,
-      createInstallerRuntimeMetadata({
-        installRoot: layout.rootPath,
-        runtimePath: layout.runtimePath,
-        runtimeEntryPath: layout.runtimeEntryPath,
-        agentsPath: layout.agentsPath,
-        commandsPath: layout.commandsPath,
-        skillsPath: layout.skillsPath,
-        workflowsPath: layout.workflowsPath,
-        plugins: entries.map((entry) => entry.id),
-        bundledFiles,
-      }),
-    );
+    for (const obsoletePath of obsoletePaths) {
+      try {
+        await fs.access(obsoletePath);
+      } catch {
+        continue;
+      }
 
-    if (existingMetadata === null) {
-      details.push(`wrote manifest ${layout.metadataPath}`);
-    } else {
-      details.push(`updated manifest ${layout.metadataPath}`);
+      await fs.rm(obsoletePath, { recursive: true, force: true });
+      details.push(`removed legacy runtime ${obsoletePath}`);
     }
 
-    details.push(`bundled tool entry: node "${layout.runtimeEntryPath}"`);
+    await removeDirectoryIfEmpty(path.join(legacyRuntimeRoot, 'bin'));
+    await removeDirectoryIfEmpty(legacyRuntimeRoot);
     return details;
   }
 }
