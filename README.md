@@ -1,121 +1,129 @@
 # Forge
 
-Forge installs assistant-native assets under `~/.copilot`, `~/.claude`, `~/.codex`, and `~/.gemini`.
+[![npm version](https://img.shields.io/npm/v/forge-ai-assist)](https://www.npmjs.com/package/forge-ai-assist)
+[![CI](https://github.com/ajitgunturi/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/ajitgunturi/forge/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Node.js](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](https://nodejs.org)
 
-The `forge` CLI installs and removes assistant-native assets. After installation, the assistant files tell Copilot, Claude, Codex, and Gemini to use read-only `gh`/`git` commands directly:
+**Give your AI coding assistant superpowers over your GitHub workflow.**
 
-- Discussions: `gh api graphql`
-- Issues: `gh issue list` / `gh issue view`
-- PR review comments: `gh pr view` / `gh pr list`, plus read-only `gh api` when inline review comments are needed
-- Commit Craft Coach: `git log` / `git diff --stat` for commit quality coaching
-- PR Architect: `gh pr list --json` / `gh pr view --json` for PR structure coaching
-- Review Quality Coach: `gh api` for code review quality coaching
+Forge is a single CLI that installs plugins into GitHub Copilot, Claude Code, Codex, and Gemini CLI — so every assistant in your toolkit can analyze discussions, review PRs, and coach you on engineering quality. One install, four assistants, zero lock-in.
 
-## Install
+## Quick Start
 
 ```bash
 npx forge-ai-assist@latest
 ```
 
-By default, Forge installs the **core** plugin group (Discussion Analyzer, Issue Analyzer, PR Comments Analyzer). To add elevate plugins:
+That's it. Forge asks which assistants you use, installs the plugins, and you're ready.
+
+## What Can You Do With Forge?
+
+### Understand what the community is saying
+
+> *"Summarize the top 5 open discussions and highlight unanswered questions"*
+
+The **Discussion Analyzer** fetches live GitHub Discussions data and gives you a structured summary — no tab-switching required.
+
+### Triage issues faster
+
+> *"Show me open bugs labeled `P0` and group them by component"*
+
+The **Issue Analyzer** pulls live issue data so your assistant can filter, group, and surface what matters.
+
+### Review PRs without context-switching
+
+> *"Analyze review comments on PR #42 — what are the recurring themes?"*
+
+The **PR Comments Analyzer** reads review threads and distills them into actionable patterns.
+
+### Level up your commits
+
+> *"Review my last 10 commits — are they atomic and well-narrated?"*
+
+The **Commit Craft Coach** analyzes your Git history and coaches you toward commits that tell a clear story.
+
+### Ship reviewable PRs
+
+> *"Evaluate my open PR — is it structured for easy review?"*
+
+The **PR Architect** examines PR size, scope, and structure, then coaches you toward PRs reviewers can confidently approve.
+
+### Write better code reviews
+
+> *"Assess my recent reviews — are they specific and architecturally deep?"*
+
+The **Review Quality Coach** analyzes your outgoing reviews and helps you move beyond "LGTM."
+
+### Generate release notes
+
+> *"Generate release notes from v1.1.20 to HEAD"*
+
+The **Release Notes Generator** synthesizes commits, PRs, and issues into structured release notes.
+
+## Install Options
 
 ```bash
+# Install core plugins (discussions, issues, PR comments)
+npx forge-ai-assist@latest
+
+# Add coaching plugins
 npx forge-ai-assist@latest --plugins elevate
+
+# Install everything
 npx forge-ai-assist@latest --plugins all
-```
 
-When run in a terminal, Forge asks whether to install `copilot`, `claude`, `codex`, `gemini`, or `all`.
-For automation, you can skip the prompt:
-
-```bash
-npx forge-ai-assist@latest --assistants all
-npx forge-ai-assist@latest --assistants copilot
+# Target a specific assistant
 npx forge-ai-assist@latest --assistants claude --plugins all
+
+# Non-interactive (CI-friendly)
+npx forge-ai-assist@latest --assistants all --plugins all
 ```
 
 ## Uninstall
 
 ```bash
 npx forge-ai-assist@latest --uninstall
-npx forge-ai-assist@latest --uninstall --assistants claude
-npx forge-ai-assist@latest --uninstall --plugins elevate
 ```
 
-Uninstall removes the Forge-managed assistant assets for the selected targets and prunes empty Forge-owned directories when possible.
-It also cleans up legacy bundled runtime leftovers from older releases, while leaving unrelated assistant files and `~/.config/gh` alone.
-
-If npm keeps serving a stale cached release, force an online refresh:
+## Check What's Installed
 
 ```bash
-npm_config_prefer_online=true npx forge-ai-assist@latest
+npx forge-ai-assist@latest status
 ```
 
-## Use
+## Plugin Groups
 
-In GitHub Copilot:
+| Group | Plugins | Installed by default? |
+|-------|---------|----------------------|
+| **Core** | Discussion Analyzer, Issue Analyzer, PR Comments Analyzer | Yes |
+| **Elevate** | Commit Craft Coach, PR Architect, Review Quality Coach | `--plugins elevate` |
+| **Ops** | Release Notes Generator | `--plugins ops` |
 
-1. Run `/agent`
-2. Select an agent: `forge-discussion-analyzer`, `forge-issue-analyzer`, `forge-pr-comments-analyzer`, `forge-commit-craft-coach`, `forge-pr-architect`, or `forge-review-quality-coach`
-3. Ask a question about the selected domain
+## Supported Assistants
 
-For `gh copilot`, Forge also installs matching skills under `~/.copilot/skills/`.
+| Assistant | How to invoke a plugin |
+|-----------|----------------------|
+| **GitHub Copilot** | `/agent` → select a `forge-*` agent |
+| **Claude Code** | `/forge:discussion-analyzer`, `/forge:issue-analyzer`, etc. |
+| **Codex** | `$forge-discussion-analyzer`, `$forge-issue-analyzer`, etc. |
+| **Gemini CLI** | `forge:discussion-analyzer`, `forge:issue-analyzer`, etc. |
 
-In Claude Code:
+## How It Works
 
-1. Use a command: `forge:discussion-analyzer`, `forge:issue-analyzer`, `forge:pr-comments-analyzer`, `forge:commit-craft-coach`, `forge:pr-architect`, or `forge:review-quality-coach`
-2. Claude follows the installed workflow file under `~/.claude/forge/workflows/`
-3. The workflow runs read-only `gh`/`git` commands in the current repository
+Forge doesn't run a background service or proxy your data. It installs lightweight prompt files — agents, skills, and workflows — directly into each assistant's config directory. When you invoke a plugin, your assistant runs read-only `gh` and `git` commands in your current repo and interprets the results. Your data never leaves your machine beyond what `gh` already does.
 
-In Codex:
+## Documentation
 
-1. Use a skill: `$forge-discussion-analyzer`, `$forge-issue-analyzer`, `$forge-pr-comments-analyzer`, `$forge-commit-craft-coach`, `$forge-pr-architect`, or `$forge-review-quality-coach`
-2. Codex also gets matching agent files under `~/.codex/agents/`
-3. The installed skill and workflow instruct Codex to run read-only `gh`/`git` commands directly
+| Doc | What's in it |
+|-----|-------------|
+| [Usage Guide](docs/usage-guide.md) | Per-assistant setup, custom instructions, file locations |
+| [Plugin Architecture](docs/plugin-architecture.md) | How plugins are defined, rendered, and installed |
+| [Adding a Plugin](docs/adding-skill-agent-template.md) | Step-by-step checklist for contributors |
+| [Releasing](docs/releasing.md) | Version bump and publish workflow |
+| [Contributing](CONTRIBUTING.md) | Dev setup, project structure, and release process |
+| [Changelog](CHANGELOG.md) | Release history |
 
-In Gemini:
+## License
 
-1. Use a command: `forge:discussion-analyzer`, `forge:issue-analyzer`, `forge:pr-comments-analyzer`, `forge:commit-craft-coach`, `forge:pr-architect`, or `forge:review-quality-coach`
-2. Gemini also gets matching agents under `~/.gemini/agents/`
-3. The installed command prompt points Gemini at the same read-only `gh`/`git` workflow
-
-## Custom Instructions
-
-Forge installs managed files such as:
-
-- `~/.copilot/agents/forge-discussion-analyzer.agent.md`
-- `~/.copilot/skills/forge-discussion-analyzer/SKILL.md`
-- `~/.claude/commands/forge/discussion-analyzer.md`
-- `~/.claude/agents/forge-discussion-analyzer.md`
-- `~/.claude/forge/workflows/discussion-analyzer.md`
-- `~/.codex/skills/forge-discussion-analyzer/SKILL.md`
-- `~/.codex/agents/forge-discussion-analyzer.md`
-- `~/.codex/agents/forge-discussion-analyzer.toml`
-- `~/.codex/forge/workflows/discussion-analyzer.md`
-- `~/.gemini/commands/forge/discussion-analyzer.toml`
-- `~/.gemini/agents/forge-discussion-analyzer.md`
-- `~/.gemini/forge/workflows/discussion-analyzer.md`
-
-The same pattern applies for `forge-issue-analyzer`, `forge-pr-comments-analyzer`, `forge-commit-craft-coach`, `forge-pr-architect`, and `forge-review-quality-coach`.
-
-These files include a preserved user-customizations block:
-
-- Add your own Copilot instructions inside the `BEGIN USER CUSTOMIZATIONS` / `END USER CUSTOMIZATIONS` section.
-- Add your own Claude instructions inside the same markers in the Claude command or agent files.
-- Add your own Codex instructions inside the same markers in the Codex skill file.
-- Add your own Gemini instructions inside the same markers in the Gemini agent file.
-- Leave the Forge-managed section unchanged.
-- Reinstalls replace only the Forge-managed block, so your custom instructions stay intact.
-
-## Notes
-
-- **Core plugins** (installed by default):
-  - `forge-discussion-analyzer` works with GitHub Discussions only.
-  - `forge-issue-analyzer` works with GitHub Issues only.
-  - `forge-pr-comments-analyzer` works with GitHub PR review comments only.
-- **Elevate plugins** (install with `--plugins elevate` or `--plugins all`):
-  - `forge-commit-craft-coach` coaches on commit quality using Git history analysis.
-  - `forge-pr-architect` coaches on PR structure and reviewability using PR metrics.
-  - `forge-review-quality-coach` coaches on code review depth and actionability.
-- Forge installs into `~/.copilot`, `~/.claude`, `~/.codex`, and `~/.gemini`. It does not install files under `~/.config/gh`.
-- Assistant reinstall cleans the legacy bundled runtime files if they still exist from older Forge versions.
-- More development and release details are in [CONTRIBUTING.md](/Users/ajitg/workspace/forge/CONTRIBUTING.md).
+[MIT](LICENSE) — Copyright (c) 2024-2026 Ajit Gunturi
