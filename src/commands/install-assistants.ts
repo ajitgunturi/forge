@@ -3,16 +3,12 @@ import path from 'node:path';
 import readline from 'node:readline/promises';
 import { assistantInstallService } from '../services/assistants/install.js';
 import { AssistantId, AssistantOperationResult } from '../contracts/assistants.js';
+import { ForgePlugin } from '../contracts/forge-plugin.js';
 import {
-  forgeDiscussionAnalyzerEntry,
-  forgeIssueAnalyzerEntry,
-  forgePRCommentsAnalyzerEntry,
-  forgeCommitCraftCoachEntry,
-  forgePRArchitectEntry,
-  forgeReviewQualityCoachEntry,
   PluginGroup,
   getPluginGroupInfo,
   PluginGroupInfo,
+  resolvePluginGroups,
 } from '../services/assistants/summonables.js';
 import { getExposedPluginName } from '../services/assistants/exposure.js';
 
@@ -243,62 +239,93 @@ function printInstallTargets(
   }
 }
 
-function buildSuccessMessage(assistantIds: AssistantId[], pluginGroups: PluginGroup[] = DEFAULT_PLUGIN_GROUPS): string {
-  const lines: string[] = ['Available Forge entrypoints:'];
-  const hasCore = pluginGroups.includes('core');
-  const hasElevate = pluginGroups.includes('elevate');
+interface AssistantColumn {
+  id: AssistantId;
+  label: string;
+  invocationPrefix: string;
+}
 
-  const coreAgents = hasCore
-    ? ['forge-discussion-analyzer', 'forge-issue-analyzer', 'forge-pr-comments-analyzer']
-    : [];
-  const elevateAgents = hasElevate
-    ? ['forge-commit-craft-coach', 'forge-pr-architect', 'forge-review-quality-coach']
-    : [];
-  const allAgents = [...coreAgents, ...elevateAgents];
+const ASSISTANT_COLUMNS: AssistantColumn[] = [
+  { id: 'copilot', label: 'Copilot', invocationPrefix: '/agent ' },
+  { id: 'claude', label: 'Claude', invocationPrefix: '/' },
+  { id: 'codex', label: 'Codex', invocationPrefix: '$' },
+  { id: 'gemini', label: 'Gemini', invocationPrefix: '/' },
+];
 
-  const coreEntries = hasCore
-    ? [forgeDiscussionAnalyzerEntry, forgeIssueAnalyzerEntry, forgePRCommentsAnalyzerEntry]
-    : [];
-  const elevateEntries = hasElevate
-    ? [forgeCommitCraftCoachEntry, forgePRArchitectEntry, forgeReviewQualityCoachEntry]
-    : [];
-  const allEntries = [...coreEntries, ...elevateEntries];
+function getPluginInvocationName(assistantId: AssistantId, entry: ForgePlugin): string {
+  switch (assistantId) {
+    case 'copilot':
+      return entry.id;
+    case 'claude':
+      return getExposedPluginName('claude', 'command', entry);
+    case 'codex':
+      return getExposedPluginName('codex', 'skill', entry);
+    case 'gemini':
+      return getExposedPluginName('gemini', 'command', entry);
+  }
+}
 
-  if (allAgents.length === 0) {
+export function buildSuccessMessage(assistantIds: AssistantId[], pluginGroups: PluginGroup[] = DEFAULT_PLUGIN_GROUPS): string {
+  const allEntries = resolvePluginGroups(pluginGroups);
+
+  if (allEntries.length === 0) {
     return 'Forge assistant assets are ready.';
   }
 
-  if (assistantIds.includes('copilot')) {
-    const agentNames = allAgents.map((name) => `/agent ${name}`).join('`, `');
-    lines.push(`- Copilot agents: \`${agentNames}\``);
-    const skillNames = allAgents.join('`, `');
-    lines.push(`- Copilot skills (gh copilot): \`${skillNames}\``);
+  const activeColumns = ASSISTANT_COLUMNS.filter((col) => assistantIds.includes(col.id));
+  if (activeColumns.length === 0) {
+    return 'Forge assistant assets are ready.';
   }
 
-  if (assistantIds.includes('claude')) {
-    const commandNames = allEntries.map((e) => getExposedPluginName('claude', 'command', e)).join('`, `');
-    lines.push(`- Claude commands: \`${commandNames}\``);
+  const groupInfos = getPluginGroupInfo().filter((g) => pluginGroups.includes(g.id));
+  const installedGroups = pluginGroups;
+  const missingGroups = getPluginGroupInfo().filter((g) => !installedGroups.includes(g.id));
+
+  const pluginColWidth = Math.max(
+    'Plugin'.length,
+    ...allEntries.map((e) => e.displayName.length),
+  );
+  const colWidths = activeColumns.map((col) => {
+    const invocationNames = allEntries.map((e) => `${col.invocationPrefix}${getPluginInvocationName(col.id, e)}`);
+    return Math.max(col.label.length, ...invocationNames.map((n) => n.length));
+  });
+
+  const lines: string[] = [];
+  lines.push('');
+  lines.push('Available Forge plugins:');
+  lines.push('');
+
+  const headerCells = [
+    'Plugin'.padEnd(pluginColWidth),
+    ...activeColumns.map((col, i) => col.label.padEnd(colWidths[i])),
+  ];
+  const headerLine = `  ${headerCells.join('  ')}`;
+  const separatorLine = `  ${'─'.repeat(pluginColWidth)}  ${colWidths.map((w) => '─'.repeat(w)).join('  ')}`;
+
+  lines.push(headerLine);
+  lines.push(separatorLine);
+
+  for (const group of groupInfos) {
+    for (const entry of group.plugins) {
+      const pluginCell = entry.displayName.padEnd(pluginColWidth);
+      const assistantCells = activeColumns.map((col, i) => {
+        const name = `${col.invocationPrefix}${getPluginInvocationName(col.id, entry)}`;
+        return name.padEnd(colWidths[i]);
+      });
+      lines.push(`  ${pluginCell}  ${assistantCells.join('  ')}`);
+    }
   }
 
-  if (assistantIds.includes('codex')) {
-    const skillNames = allEntries.map((e) => `$${getExposedPluginName('codex', 'skill', e)}`).join('`, `');
-    lines.push(`- Codex skills: \`${skillNames}\``);
-  }
-
-  if (assistantIds.includes('gemini')) {
-    const commandNames = allEntries.map((e) => getExposedPluginName('gemini', 'command', e)).join('`, `');
-    lines.push(`- Gemini commands: \`${commandNames}\``);
-  }
-
-  if (hasCore && !hasElevate) {
+  if (missingGroups.length > 0) {
     lines.push('');
-    lines.push('Level up with Forge Elevate plugins (commit coaching, PR architecture, review quality):');
-    lines.push('  npx forge-ai-assist@latest --plugins elevate');
+    for (const group of missingGroups) {
+      const pluginNames = group.plugins.map((p) => p.displayName).join(', ');
+      lines.push(`Install ${group.label} plugins (${pluginNames}):`);
+      lines.push(`  npx forge-ai-assist@latest --plugins ${group.id}`);
+    }
   }
 
-  return lines.length > 1
-    ? lines.join('\n')
-    : 'Forge assistant assets are ready.';
+  return lines.join('\n');
 }
 
 export function renderInteractiveInstallerScreen(version: string, styling: InstallStyling = createInstallStyling(false)): string {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildInteractiveOperationLines,
   buildInteractiveInstallSummary,
+  buildSuccessMessage,
   renderInteractiveInstallerScreen,
   resolveInteractiveAssistantChoice,
   renderPluginGroupPicker,
@@ -151,5 +152,82 @@ describe('interactive plugin group picker', () => {
   it('returns null for unknown choices', () => {
     expect(resolvePluginGroupChoice('99')).toBeNull();
     expect(resolvePluginGroupChoice('invalid')).toBeNull();
+  });
+});
+
+describe('buildSuccessMessage (matrix output)', () => {
+  it('renders a matrix table with header, separator, and plugin rows', () => {
+    const output = buildSuccessMessage(['claude'], ['core']);
+
+    expect(output).toContain('Available Forge plugins:');
+    expect(output).toContain('Plugin');
+    expect(output).toContain('Claude');
+    expect(output).toContain('───');
+    expect(output).toContain('Forge Discussion Analyzer');
+    expect(output).toContain('Forge Issue Analyzer');
+    expect(output).toContain('Forge PR Comments Analyzer');
+  });
+
+  it('shows correct invocation names per assistant', () => {
+    const output = buildSuccessMessage(['copilot', 'claude', 'codex', 'gemini'], ['core']);
+
+    expect(output).toContain('Copilot');
+    expect(output).toContain('Claude');
+    expect(output).toContain('Codex');
+    expect(output).toContain('Gemini');
+
+    expect(output).toContain('/agent forge-discussion-analyzer');
+    expect(output).toContain('/forge:discussion-analyzer');
+    expect(output).toContain('$forge-discussion-analyzer');
+  });
+
+  it('includes ops group plugins when ops is in plugin groups', () => {
+    const output = buildSuccessMessage(['claude'], ['core', 'ops']);
+
+    expect(output).toContain('Forge Release Notes Generator');
+    expect(output).toContain('/forge:release-notes-generator');
+  });
+
+  it('includes all groups when all groups are selected', () => {
+    const output = buildSuccessMessage(['claude'], ['core', 'elevate', 'ops']);
+
+    expect(output).toContain('Forge Discussion Analyzer');
+    expect(output).toContain('Forge Commit Craft Coach');
+    expect(output).toContain('Forge Release Notes Generator');
+  });
+
+  it('shows install hints for missing plugin groups', () => {
+    const output = buildSuccessMessage(['claude'], ['core']);
+
+    expect(output).toContain('Install Elevate plugins');
+    expect(output).toContain('npx forge-ai-assist@latest --plugins elevate');
+    expect(output).toContain('Install Ops plugins');
+    expect(output).toContain('npx forge-ai-assist@latest --plugins ops');
+  });
+
+  it('does not show install hints when all groups are installed', () => {
+    const output = buildSuccessMessage(['claude'], ['core', 'elevate', 'ops']);
+
+    expect(output).not.toContain('Install Elevate plugins');
+    expect(output).not.toContain('Install Ops plugins');
+  });
+
+  it('only shows columns for requested assistants', () => {
+    const output = buildSuccessMessage(['claude'], ['core']);
+
+    expect(output).toContain('Claude');
+    expect(output).not.toContain('Copilot');
+    expect(output).not.toContain('Codex');
+    expect(output).not.toContain('Gemini');
+  });
+
+  it('returns a fallback message when no plugins are selected', () => {
+    const output = buildSuccessMessage(['claude'], []);
+    expect(output).toBe('Forge assistant assets are ready.');
+  });
+
+  it('returns a fallback message when no assistants are selected', () => {
+    const output = buildSuccessMessage([], ['core']);
+    expect(output).toBe('Forge assistant assets are ready.');
   });
 });
