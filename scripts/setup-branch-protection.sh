@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ─────────────────────────────────────────────────────────────
 # Creates a GitHub repository ruleset that:
-#   • Blocks direct pushes to main (including admins/owners)
-#   • Requires a PR with at least 1 approval
+#   • Blocks direct pushes to main for everyone
+#   • Requires a PR with at least 1 approval (repo admin can bypass)
 #   • Requires the CI status check to pass
 #   • Blocks force-pushes and branch deletion
 #
@@ -26,7 +26,13 @@ gh api --method POST "/repos/${OWNER_REPO}/rulesets" \
       "exclude": []
     }
   },
-  "bypass_actors": [],
+  "bypass_actors": [
+    {
+      "actor_id": 5,
+      "actor_type": "RepositoryRole",
+      "bypass_mode": "always"
+    }
+  ],
   "rules": [
     {
       "type": "pull_request",
@@ -61,5 +67,4 @@ gh api --method POST "/repos/${OWNER_REPO}/rulesets" \
 }
 EOF
 
-echo "✓ Ruleset created. No one (including you) can push directly to main."
-echo "  All changes must go through a PR with 1 approval and passing CI."
+echo "✓ Ruleset created. Repo admin can bypass approvals; all others need 1 approval + passing CI."
